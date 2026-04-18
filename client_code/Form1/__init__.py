@@ -64,7 +64,7 @@ class Form1(Form1Template):
                 self._agents_card.add_component(Label(text=label, bold=True, role='body'))
                 for a in group:
                     self._agents_card.add_component(
-                        Label(text=f"  \u2022 {a['name']}", role='body')
+                        Label(text=f"  \u2022 {a['agent_name']}", role='body')
                     )
         except Exception as e:
             self._agents_card.add_component(Label(text=f'Unavailable: {e}', role='body'))
@@ -82,10 +82,8 @@ class Form1(Form1Template):
                 self._queue_card.add_component(Label(text='Queue is empty', role='body'))
                 return
             for t in tasks[:15]:
-                desc = t.get('description') or ''
-                summary = f"[{t['status']}] {t['task_type']}"
-                if desc:
-                    summary += f' \u2014 {desc[:60]}'
+                priority = t.get('priority') or 'normal'
+                summary = f"[{t['status']}] {t['task_type']} (p:{priority})"
                 self._queue_card.add_component(Label(text=summary, role='body'))
         except Exception as e:
             self._queue_card.add_component(Label(text=f'Unavailable: {e}', role='body'))
