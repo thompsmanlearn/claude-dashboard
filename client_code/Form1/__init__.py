@@ -3,69 +3,94 @@ from anvil import *
 import anvil.server
 
 
+_STATUS_ICONS = {
+    'active': '\u2705', 'paused': '\u23f8', 'sandbox': '\U0001f9ea',
+    'building': '\U0001f6e0', 'broken': '\u274c', 'retired': '\U0001f4e6',
+}
+_STATUS_ORDER = ['active', 'paused', 'sandbox', 'building', 'broken', 'retired']
+_EXPAND = '\u25bc'   # ▼
+_COLLAPSE = '\u25b6'  # ▶
+
+
 class Form1(Form1Template):
     def __init__(self, **properties):
         self.init_components(**properties)
+        self._agent_card_panels = []  # [(name_lower, card_panel)]
+        self._search_box = None
         self._build_layout()
         self.refresh_data()
 
+    # ── Layout helpers ────────────────────────────────────────────────────────
+
+    def _make_section(self, title, default_open=False):
+        """Return (outer_panel, body_panel, title_label) with collapsible header."""
+        outer = ColumnPanel(role='outlined-card')
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        lbl = Label(text=title, role='title', bold=True)
+        btn = Button(text=_EXPAND if default_open else _COLLAPSE, role='text-button')
+        hdr.add_component(lbl)
+        hdr.add_component(btn)
+        outer.add_component(hdr)
+        body = ColumnPanel()
+        body.visible = default_open
+        outer.add_component(body)
+
+        def _toggle(**kw):
+            body.visible = not body.visible
+            btn.text = _EXPAND if body.visible else _COLLAPSE
+
+        btn.set_event_handler('click', _toggle)
+        return outer, body, lbl
+
     def _build_layout(self):
-        header = FlowPanel(spacing_above='none', spacing_below='small')
-        header.add_component(Label(text='AADP Dashboard', role='headline', bold=True))
-        btn = Button(text='Refresh All', role='filled-button')
-        btn.set_event_handler('click', self._refresh_clicked)
-        header.add_component(btn)
-        self.content_panel.add_component(header)
+        top = FlowPanel(spacing_above='none', spacing_below='small')
+        top.add_component(Label(text='AADP', role='headline', bold=True))
+        ref_btn = Button(text='Refresh', role='filled-button')
+        ref_btn.set_event_handler('click', self._refresh_clicked)
+        top.add_component(ref_btn)
+        self.content_panel.add_component(top)
 
-        self._status_card = ColumnPanel(role='outlined-card')
-        self.content_panel.add_component(self._status_card)
+        sec, self._status_body, _ = self._make_section('System Status', default_open=True)
+        self.content_panel.add_component(sec)
 
-        self._agents_card = ColumnPanel(role='outlined-card')
-        self.content_panel.add_component(self._agents_card)
+        sec, self._agents_body, self._agents_lbl = self._make_section('Agent Fleet')
+        self.content_panel.add_component(sec)
 
-        self._queue_card = ColumnPanel(role='outlined-card')
-        self.content_panel.add_component(self._queue_card)
+        sec, self._queue_body, self._queue_lbl = self._make_section('Work Queue')
+        self.content_panel.add_component(sec)
 
-        self._inbox_card = ColumnPanel(role='outlined-card')
-        self.content_panel.add_component(self._inbox_card)
+        sec, self._inbox_body, self._inbox_lbl = self._make_section('Inbox')
+        self.content_panel.add_component(sec)
 
-        self._controls_card = ColumnPanel(role='outlined-card')
-        self._build_controls()
-        self.content_panel.add_component(self._controls_card)
+        sec, controls_body, _ = self._make_section('Controls')
+        self._build_controls(controls_body)
+        self.content_panel.add_component(sec)
 
-    def _build_controls(self):
-        self._controls_card.add_component(
-            Label(text='Controls', role='title', bold=True)
-        )
-
-        # Lean session
-        self._controls_card.add_component(Label(text='Lean Session', bold=True, role='body'))
-        lean_row = FlowPanel(spacing_above='none', spacing_below='none')
+    def _build_controls(self, panel):
+        panel.add_component(Label(text='Lean Session', bold=True, role='body'))
         lean_btn = Button(text='Trigger Lean Session', role='tonal-button')
         lean_btn.set_event_handler('click', self._trigger_lean_clicked)
-        lean_row.add_component(lean_btn)
-        self._controls_card.add_component(lean_row)
+        panel.add_component(lean_btn)
         self._lean_feedback = Label(text='', role='body')
-        self._controls_card.add_component(self._lean_feedback)
+        panel.add_component(self._lean_feedback)
 
-        self._controls_card.add_component(Label(text='\u2015' * 30, role='body'))
+        panel.add_component(Label(text='\u2015' * 20, role='body'))
 
-        # Write directive
-        self._controls_card.add_component(Label(text='Write Directive', bold=True, role='body'))
-        self._controls_card.add_component(
-            Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body')
-        )
+        panel.add_component(Label(text='Write Directive', bold=True, role='body'))
+        panel.add_component(Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body'))
         self._directive_input = TextArea(
-            placeholder='Enter directive text (e.g. "Run: B-030" or free text)',
+            placeholder='e.g. "Run: B-032" or free text',
             role='outlined',
             height=80,
         )
-        self._controls_card.add_component(self._directive_input)
-        directive_btn = Button(text='Write Directive', role='tonal-button')
-        directive_btn.set_event_handler('click', self._write_directive_clicked)
-        self._controls_card.add_component(directive_btn)
+        panel.add_component(self._directive_input)
+        dir_btn = Button(text='Write Directive', role='tonal-button')
+        dir_btn.set_event_handler('click', self._write_directive_clicked)
+        panel.add_component(dir_btn)
         self._directive_feedback = Label(text='', role='body')
-        self._controls_card.add_component(self._directive_feedback)
+        panel.add_component(self._directive_feedback)
+
+    # ── Data loaders ──────────────────────────────────────────────────────────
 
     def refresh_data(self):
         self._load_status()
@@ -74,8 +99,7 @@ class Form1(Form1Template):
         self._load_inbox()
 
     def _load_status(self):
-        self._status_card.clear()
-        self._status_card.add_component(Label(text='System Status', role='title', bold=True))
+        self._status_body.clear()
         try:
             s = anvil.server.call('get_system_status')
             for row in [
@@ -85,162 +109,202 @@ class Form1(Form1Template):
                 f"Temp: {s['temperature_c']:.1f}\u00b0C",
                 f"Uptime: {s['uptime_human']}",
             ]:
-                self._status_card.add_component(Label(text=row, role='body'))
+                self._status_body.add_component(Label(text=row, role='body'))
         except Exception as e:
-            self._status_card.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._status_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
 
     def _load_agents(self):
-        self._agents_card.clear()
+        self._agent_card_panels = []
+        self._agents_body.clear()
+
+        # Search bar
+        search_row = FlowPanel(spacing_above='none', spacing_below='small')
+        search_row.add_component(Label(text='\U0001f50d ', role='body'))
+        self._search_box = TextBox(placeholder='Filter by name\u2026', width=220)
+        self._search_box.set_event_handler('change', self._filter_agents)
+        search_row.add_component(self._search_box)
+        self._agents_body.add_component(search_row)
+
         try:
             agents = anvil.server.call('get_agent_fleet')
-            self._agents_card.add_component(
-                Label(text=f'Agent Fleet ({len(agents)})', role='title', bold=True)
-            )
-            STATUS_ORDER = ['active', 'paused', 'sandbox', 'building', 'broken', 'retired']
-            def sort_key(a):
-                s = a.get('status', 'retired')
-                return (STATUS_ORDER.index(s) if s in STATUS_ORDER else len(STATUS_ORDER), a.get('agent_name', ''))
-            for agent in sorted(agents, key=sort_key):
-                self._render_agent_row(agent)
-        except Exception as e:
-            self._agents_card.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._agents_lbl.text = f'Agent Fleet ({len(agents)})'
 
-    def _render_agent_row(self, agent):
+            groups = {}
+            for a in agents:
+                groups.setdefault(a.get('status', 'retired'), []).append(a)
+
+            for status in _STATUS_ORDER:
+                if status not in groups:
+                    continue
+                group_agents = sorted(groups[status], key=lambda a: a.get('agent_name', ''))
+                icon = _STATUS_ICONS.get(status, '\u2753')
+
+                grp_outer = ColumnPanel()
+                grp_hdr = FlowPanel(spacing_above='small', spacing_below='none')
+                grp_hdr.add_component(
+                    Label(text=f'{icon} {status.capitalize()} ({len(group_agents)})', bold=True, role='body')
+                )
+                grp_btn = Button(text=_EXPAND, role='text-button')
+                grp_hdr.add_component(grp_btn)
+                grp_outer.add_component(grp_hdr)
+                grp_body = ColumnPanel()
+                grp_outer.add_component(grp_body)
+                self._agents_body.add_component(grp_outer)
+
+                def _make_grp_toggle(body, btn):
+                    def _t(**kw):
+                        body.visible = not body.visible
+                        btn.text = _EXPAND if body.visible else _COLLAPSE
+                    return _t
+
+                grp_btn.set_event_handler('click', _make_grp_toggle(grp_body, grp_btn))
+
+                for agent in group_agents:
+                    grp_body.add_component(self._build_agent_card(agent))
+
+        except Exception as e:
+            self._agents_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
+
+    def _build_agent_card(self, agent):
         agent_name = agent.get('agent_name', '')
         display_name = agent.get('display_name') or agent_name
         description = agent.get('description') or ''
         status = agent.get('status', '?')
-        schedule = agent.get('schedule') or '—'
-        updated_at = agent.get('updated_at') or ''
-        if updated_at:
-            updated_at = updated_at[:10]
+        schedule = agent.get('schedule') or '\u2014'
+        protected = agent.get('protected', False)
+        updated_at = (agent.get('updated_at') or '')[:10]
+        icon = _STATUS_ICONS.get(status, '\u2753')
+        prot_mark = '  \u26a0\ufe0f' if protected else ''
 
-        STATUS_ICONS = {
-            'active': '\u2705', 'paused': '\u23f8', 'sandbox': '\U0001f9ea',
-            'building': '\U0001f6e0', 'broken': '\u274c', 'retired': '\U0001f4e6',
-        }
-        icon = STATUS_ICONS.get(status, '\u2753')
+        card = ColumnPanel()
 
-        self._agents_card.add_component(Label(text='\u2015' * 30, role='body'))
+        # Compact header (always visible)
+        compact = FlowPanel(spacing_above='none', spacing_below='none')
+        compact.add_component(Label(text=f'{icon} {display_name}{prot_mark}', role='body'))
+        expand_btn = Button(text='+', role='text-button')
+        compact.add_component(expand_btn)
+        card.add_component(compact)
 
-        name_row = FlowPanel(spacing_above='none', spacing_below='none')
-        name_row.add_component(Label(text=f'{icon} {display_name}', bold=True, role='body'))
-        name_row.add_component(Label(text=f'  [{status}]', role='body'))
-        self._agents_card.add_component(name_row)
+        # Detail panel (tap to reveal)
+        detail = ColumnPanel()
+        detail.visible = False
+        card.add_component(detail)
 
+        card.add_component(Label(text='\u2500' * 25, role='body'))
+
+        # Populate detail
         if description:
-            desc_preview = description[:120] + ('...' if len(description) > 120 else '')
-            self._agents_card.add_component(Label(text=desc_preview, role='body'))
-
+            preview = description[:120] + ('\u2026' if len(description) > 120 else '')
+            detail.add_component(Label(text=preview, role='body'))
         meta = f'Schedule: {schedule}'
         if updated_at:
             meta += f'  |  Updated: {updated_at}'
-        self._agents_card.add_component(Label(text=meta, role='body'))
+        detail.add_component(Label(text=meta, role='body'))
 
-        action_row = FlowPanel(spacing_above='none', spacing_below='none')
         fb_label = Label(text='', role='body')
+        action_row = FlowPanel(spacing_above='none', spacing_below='none')
 
-        # Activate/pause toggle — only for active or paused agents
         if status in ('active', 'paused'):
             new_status = 'paused' if status == 'active' else 'active'
-            toggle_text = 'Pause' if status == 'active' else 'Activate'
-            toggle_btn = Button(text=toggle_text, role='tonal-button')
+            tog_btn = Button(text='Pause' if status == 'active' else 'Activate', role='tonal-button')
 
-            def make_toggle(a_name, ns, btn, lbl):
-                def on_toggle(**event_args):
+            def _make_toggle(a_name, ns, b, lbl):
+                def _t(**kw):
                     try:
                         anvil.server.call('set_agent_status', a_name, ns)
                         lbl.text = f'\u2705 Set to {ns}'
-                        btn.enabled = False
+                        b.enabled = False
                     except Exception as ex:
                         lbl.text = f'\u274c {ex}'
-                return on_toggle
+                return _t
 
-            toggle_btn.set_event_handler('click', make_toggle(agent_name, new_status, toggle_btn, fb_label))
-            action_row.add_component(toggle_btn)
+            tog_btn.set_event_handler('click', _make_toggle(agent_name, new_status, tog_btn, fb_label))
+            action_row.add_component(tog_btn)
 
-        # Feedback buttons
         thumb_up = Button(text='\U0001f44d', role='outlined-button')
         thumb_down = Button(text='\U0001f44e', role='outlined-button')
-        comment_box = TextBox(placeholder='Comment (optional)', width=180)
+        comment_box = TextBox(placeholder='Comment', width=160)
 
-        def make_feedback(a_name, rating, lbl):
-            def on_feedback(**event_args):
+        def _make_feedback(a_name, rating, lbl):
+            def _f(**kw):
                 try:
-                    comment = comment_box.text or None
-                    anvil.server.call('submit_agent_feedback', a_name, rating, comment)
+                    anvil.server.call('submit_agent_feedback', a_name, rating, comment_box.text or None)
                     lbl.text = '\u2705 Thanks!'
                     comment_box.text = ''
                 except Exception as ex:
                     lbl.text = f'\u274c {ex}'
-            return on_feedback
+            return _f
 
-        thumb_up.set_event_handler('click', make_feedback(agent_name, 1, fb_label))
-        thumb_down.set_event_handler('click', make_feedback(agent_name, -1, fb_label))
+        thumb_up.set_event_handler('click', _make_feedback(agent_name, 1, fb_label))
+        thumb_down.set_event_handler('click', _make_feedback(agent_name, -1, fb_label))
         action_row.add_component(thumb_up)
         action_row.add_component(thumb_down)
         action_row.add_component(comment_box)
+        detail.add_component(action_row)
+        detail.add_component(fb_label)
 
-        self._agents_card.add_component(action_row)
-        self._agents_card.add_component(fb_label)
+        def _make_expand(det, btn):
+            def _e(**kw):
+                det.visible = not det.visible
+                btn.text = '\u2212' if det.visible else '+'
+            return _e
+
+        expand_btn.set_event_handler('click', _make_expand(detail, expand_btn))
+
+        self._agent_card_panels.append((agent_name.lower(), card))
+        return card
+
+    def _filter_agents(self, **event_args):
+        query = (self._search_box.text or '').lower().strip()
+        for name_lower, card in self._agent_card_panels:
+            card.visible = (not query) or (query in name_lower)
 
     def _load_queue(self):
-        self._queue_card.clear()
+        self._queue_body.clear()
         try:
             tasks = anvil.server.call('get_work_queue')
             pending = sum(1 for t in tasks if t['status'] == 'pending')
             claimed = sum(1 for t in tasks if t['status'] == 'claimed')
-            self._queue_card.add_component(
-                Label(text=f'Work Queue \u2014 {pending} pending, {claimed} claimed', role='title', bold=True)
-            )
+            self._queue_lbl.text = f'Work Queue \u2014 {pending} pending, {claimed} claimed'
             if not tasks:
-                self._queue_card.add_component(Label(text='Queue is empty', role='body'))
+                self._queue_body.add_component(Label(text='Queue is empty', role='body'))
                 return
             for t in tasks[:15]:
-                self._queue_card.add_component(
+                self._queue_body.add_component(
                     Label(text=f"[{t['status']}] {t['task_type']} (p:{t.get('priority', '?')})", role='body')
                 )
         except Exception as e:
-            self._queue_card.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._queue_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
 
     def _load_inbox(self):
-        self._inbox_card.clear()
+        self._inbox_body.clear()
         try:
             items = anvil.server.call('get_inbox')
-            self._inbox_card.add_component(
-                Label(text=f'Inbox \u2014 {len(items)} pending', role='title', bold=True)
-            )
+            self._inbox_lbl.text = f'Inbox \u2014 {len(items)} pending'
             if not items:
-                self._inbox_card.add_component(Label(text='Inbox is clear.', role='body'))
+                self._inbox_body.add_component(Label(text='Inbox is clear.', role='body'))
                 return
             for item in items:
                 self._render_inbox_item(item)
         except Exception as e:
-            self._inbox_card.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._inbox_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
 
     def _render_inbox_item(self, item):
         item_id = item['id']
-
-        self._inbox_card.add_component(Label(text='\u2015' * 30, role='body'))
-        self._inbox_card.add_component(
-            Label(text=item['subject'], bold=True, role='body')
-        )
-        self._inbox_card.add_component(
+        self._inbox_body.add_component(Label(text='\u2015' * 20, role='body'))
+        self._inbox_body.add_component(Label(text=item['subject'], bold=True, role='body'))
+        self._inbox_body.add_component(
             Label(text=f"From: {item['from_agent']}  |  Priority: {item.get('priority', 'normal')}", role='body')
         )
-
-        body_preview = (item.get('body') or '')[:200]
-        if len(item.get('body') or '') > 200:
-            body_preview += '...'
-        self._inbox_card.add_component(Label(text=body_preview, role='body'))
-
+        body_text = item.get('body') or ''
+        preview = body_text[:200] + ('\u2026' if len(body_text) > 200 else '')
+        self._inbox_body.add_component(Label(text=preview, role='body'))
         fb_label = Label(text='', role='body')
-
         btn_row = FlowPanel(spacing_above='none', spacing_below='none')
         approve_btn = Button(text='Approve', role='filled-button')
         deny_btn = Button(text='Deny', role='outlined-button')
 
-        def on_approve(**event_args):
+        def on_approve(**kw):
             try:
                 anvil.server.call('approve_inbox_item', item_id)
                 fb_label.text = '\u2705 Approved'
@@ -249,7 +313,7 @@ class Form1(Form1Template):
             except Exception as ex:
                 fb_label.text = f'\u274c Error: {ex}'
 
-        def on_deny(**event_args):
+        def on_deny(**kw):
             try:
                 anvil.server.call('deny_inbox_item', item_id)
                 fb_label.text = '\u274c Denied'
@@ -262,8 +326,10 @@ class Form1(Form1Template):
         deny_btn.set_event_handler('click', on_deny)
         btn_row.add_component(approve_btn)
         btn_row.add_component(deny_btn)
-        self._inbox_card.add_component(btn_row)
-        self._inbox_card.add_component(fb_label)
+        self._inbox_body.add_component(btn_row)
+        self._inbox_body.add_component(fb_label)
+
+    # ── Event handlers ────────────────────────────────────────────────────────
 
     def _trigger_lean_clicked(self, **event_args):
         self._lean_feedback.text = 'Starting...'
