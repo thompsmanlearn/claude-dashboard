@@ -26,7 +26,7 @@ class Form1(Form1Template):
         """Return (outer_panel, body_panel, title_label) with collapsible header."""
         outer = ColumnPanel(role='outlined-card')
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        lbl = Label(text=title, role='title', bold=True)
+        lbl = Label(text=title, role='title', bold=True, font_size=20)
         btn = Button(text=_EXPAND if default_open else _COLLAPSE, role='text-button')
         hdr.add_component(lbl)
         hdr.add_component(btn)
@@ -67,17 +67,17 @@ class Form1(Form1Template):
         self.content_panel.add_component(sec)
 
     def _build_controls(self, panel):
-        panel.add_component(Label(text='Lean Session', bold=True, role='body'))
+        panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
         lean_btn = Button(text='Trigger Lean Session', role='tonal-button')
         lean_btn.set_event_handler('click', self._trigger_lean_clicked)
         panel.add_component(lean_btn)
-        self._lean_feedback = Label(text='', role='body')
+        self._lean_feedback = Label(text='', role='body', font_size=16)
         panel.add_component(self._lean_feedback)
 
-        panel.add_component(Label(text='\u2015' * 20, role='body'))
+        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
 
-        panel.add_component(Label(text='Write Directive', bold=True, role='body'))
-        panel.add_component(Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body'))
+        panel.add_component(Label(text='Write Directive', bold=True, role='body', font_size=16))
+        panel.add_component(Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body', font_size=16))
         self._directive_input = TextArea(
             placeholder='e.g. "Run: B-032" or free text',
             role='outlined',
@@ -87,7 +87,7 @@ class Form1(Form1Template):
         dir_btn = Button(text='Write Directive', role='tonal-button')
         dir_btn.set_event_handler('click', self._write_directive_clicked)
         panel.add_component(dir_btn)
-        self._directive_feedback = Label(text='', role='body')
+        self._directive_feedback = Label(text='', role='body', font_size=16)
         panel.add_component(self._directive_feedback)
 
     # ── Data loaders ──────────────────────────────────────────────────────────
@@ -109,9 +109,9 @@ class Form1(Form1Template):
                 f"Temp: {s['temperature_c']:.1f}\u00b0C",
                 f"Uptime: {s['uptime_human']}",
             ]:
-                self._status_body.add_component(Label(text=row, role='body'))
+                self._status_body.add_component(Label(text=row, role='body', font_size=16))
         except Exception as e:
-            self._status_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._status_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
 
     def _load_agents(self):
         self._agent_card_panels = []
@@ -119,7 +119,7 @@ class Form1(Form1Template):
 
         # Search bar
         search_row = FlowPanel(spacing_above='none', spacing_below='small')
-        search_row.add_component(Label(text='\U0001f50d ', role='body'))
+        search_row.add_component(Label(text='\U0001f50d ', role='body', font_size=16))
         self._search_box = TextBox(placeholder='Filter by name\u2026', width=220)
         self._search_box.set_event_handler('change', self._filter_agents)
         search_row.add_component(self._search_box)
@@ -142,7 +142,7 @@ class Form1(Form1Template):
                 grp_outer = ColumnPanel()
                 grp_hdr = FlowPanel(spacing_above='small', spacing_below='none')
                 grp_hdr.add_component(
-                    Label(text=f'{icon} {status.capitalize()} ({len(group_agents)})', bold=True, role='body')
+                    Label(text=f'{icon} {status.capitalize()} ({len(group_agents)})', bold=True, role='body', font_size=16)
                 )
                 grp_btn = Button(text=_EXPAND, role='text-button')
                 grp_hdr.add_component(grp_btn)
@@ -163,7 +163,7 @@ class Form1(Form1Template):
                     grp_body.add_component(self._build_agent_card(agent))
 
         except Exception as e:
-            self._agents_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._agents_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
 
     def _build_agent_card(self, agent):
         agent_name = agent.get('agent_name', '')
@@ -180,7 +180,7 @@ class Form1(Form1Template):
 
         # Compact header (always visible)
         compact = FlowPanel(spacing_above='none', spacing_below='none')
-        compact.add_component(Label(text=f'{icon} {display_name}{prot_mark}', role='body'))
+        compact.add_component(Label(text=f'{icon} {display_name}{prot_mark}', role='body', font_size=16))
         expand_btn = Button(text='+', role='text-button')
         compact.add_component(expand_btn)
         card.add_component(compact)
@@ -190,18 +190,18 @@ class Form1(Form1Template):
         detail.visible = False
         card.add_component(detail)
 
-        card.add_component(Label(text='\u2500' * 25, role='body'))
+        card.add_component(Label(text='\u2500' * 25, role='body', font_size=16))
 
         # Populate detail
         if description:
             preview = description[:120] + ('\u2026' if len(description) > 120 else '')
-            detail.add_component(Label(text=preview, role='body'))
+            detail.add_component(Label(text=preview, role='body', font_size=16))
         meta = f'Schedule: {schedule}'
         if updated_at:
             meta += f'  |  Updated: {updated_at}'
-        detail.add_component(Label(text=meta, role='body'))
+        detail.add_component(Label(text=meta, role='body', font_size=16))
 
-        fb_label = Label(text='', role='body')
+        fb_label = Label(text='', role='body', font_size=16)
         action_row = FlowPanel(spacing_above='none', spacing_below='none')
 
         if status in ('active', 'paused'):
@@ -267,14 +267,14 @@ class Form1(Form1Template):
             claimed = sum(1 for t in tasks if t['status'] == 'claimed')
             self._queue_lbl.text = f'Work Queue \u2014 {pending} pending, {claimed} claimed'
             if not tasks:
-                self._queue_body.add_component(Label(text='Queue is empty', role='body'))
+                self._queue_body.add_component(Label(text='Queue is empty', role='body', font_size=16))
                 return
             for t in tasks[:15]:
                 self._queue_body.add_component(
-                    Label(text=f"[{t['status']}] {t['task_type']} (p:{t.get('priority', '?')})", role='body')
+                    Label(text=f"[{t['status']}] {t['task_type']} (p:{t.get('priority', '?')})", role='body', font_size=16)
                 )
         except Exception as e:
-            self._queue_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._queue_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
 
     def _load_inbox(self):
         self._inbox_body.clear()
@@ -282,24 +282,24 @@ class Form1(Form1Template):
             items = anvil.server.call('get_inbox')
             self._inbox_lbl.text = f'Inbox \u2014 {len(items)} pending'
             if not items:
-                self._inbox_body.add_component(Label(text='Inbox is clear.', role='body'))
+                self._inbox_body.add_component(Label(text='Inbox is clear.', role='body', font_size=16))
                 return
             for item in items:
                 self._render_inbox_item(item)
         except Exception as e:
-            self._inbox_body.add_component(Label(text=f'Unavailable: {e}', role='body'))
+            self._inbox_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
 
     def _render_inbox_item(self, item):
         item_id = item['id']
-        self._inbox_body.add_component(Label(text='\u2015' * 20, role='body'))
-        self._inbox_body.add_component(Label(text=item['subject'], bold=True, role='body'))
+        self._inbox_body.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+        self._inbox_body.add_component(Label(text=item['subject'], bold=True, role='body', font_size=16))
         self._inbox_body.add_component(
-            Label(text=f"From: {item['from_agent']}  |  Priority: {item.get('priority', 'normal')}", role='body')
+            Label(text=f"From: {item['from_agent']}  |  Priority: {item.get('priority', 'normal')}", role='body', font_size=16)
         )
         body_text = item.get('body') or ''
         preview = body_text[:200] + ('\u2026' if len(body_text) > 200 else '')
-        self._inbox_body.add_component(Label(text=preview, role='body'))
-        fb_label = Label(text='', role='body')
+        self._inbox_body.add_component(Label(text=preview, role='body', font_size=16))
+        fb_label = Label(text='', role='body', font_size=16)
         btn_row = FlowPanel(spacing_above='none', spacing_below='none')
         approve_btn = Button(text='Approve', role='filled-button')
         deny_btn = Button(text='Deny', role='outlined-button')
