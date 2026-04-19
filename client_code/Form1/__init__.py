@@ -17,6 +17,8 @@ class Form1(Form1Template):
         self.init_components(**properties)
         self._agent_card_panels = []  # [(name_lower, card_panel)]
         self._search_box = None
+        self._lessons_current_filter = 'recent'
+        self._lessons_loaded = False
         self._build_layout()
         self.refresh_data()
 
@@ -50,21 +52,36 @@ class Form1(Form1Template):
         top.add_component(ref_btn)
         self.content_panel.add_component(top)
 
+        # Tab navigation
+        tab_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._fleet_tab_btn = Button(text='Fleet', role='filled-button')
+        self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
+        self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
+        self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
+        tab_row.add_component(self._fleet_tab_btn)
+        tab_row.add_component(self._lessons_tab_btn)
+        self.content_panel.add_component(tab_row)
+
+        # Fleet panel (default visible)
+        self._fleet_panel = ColumnPanel()
         sec, self._status_body, _ = self._make_section('System Status', default_open=True)
-        self.content_panel.add_component(sec)
-
+        self._fleet_panel.add_component(sec)
         sec, self._agents_body, self._agents_lbl = self._make_section('Agent Fleet')
-        self.content_panel.add_component(sec)
-
+        self._fleet_panel.add_component(sec)
         sec, self._queue_body, self._queue_lbl = self._make_section('Work Queue')
-        self.content_panel.add_component(sec)
-
+        self._fleet_panel.add_component(sec)
         sec, self._inbox_body, self._inbox_lbl = self._make_section('Inbox')
-        self.content_panel.add_component(sec)
-
+        self._fleet_panel.add_component(sec)
         sec, controls_body, _ = self._make_section('Controls')
         self._build_controls(controls_body)
-        self.content_panel.add_component(sec)
+        self._fleet_panel.add_component(sec)
+        self.content_panel.add_component(self._fleet_panel)
+
+        # Lessons panel (hidden by default)
+        self._lessons_panel = ColumnPanel()
+        self._lessons_panel.visible = False
+        self._build_lessons_layout()
+        self.content_panel.add_component(self._lessons_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -115,12 +132,30 @@ class Form1(Form1Template):
             self._lean_status_label.text = f'Status unknown: {e}'
             self._lean_trigger_btn.enabled = True
 
+    def _show_fleet_tab(self, **event_args):
+        self._fleet_panel.visible = True
+        self._lessons_panel.visible = False
+        self._fleet_tab_btn.role = 'filled-button'
+        self._lessons_tab_btn.role = 'tonal-button'
+
+    def _show_lessons_tab(self, **event_args):
+        self._fleet_panel.visible = False
+        self._lessons_panel.visible = True
+        self._fleet_tab_btn.role = 'tonal-button'
+        self._lessons_tab_btn.role = 'filled-button'
+        if not self._lessons_loaded:
+            self._load_lessons('recent')
+            self._lessons_loaded = True
+
     def refresh_data(self):
         self._load_status()
         self._load_agents()
         self._load_queue()
         self._load_inbox()
         self._refresh_lean_status()
+        if not self._fleet_panel.visible:
+            self._load_lessons(self._lessons_current_filter)
+            self._lessons_loaded = True
 
     def _load_status(self):
         self._status_body.clear()
@@ -352,6 +387,125 @@ class Form1(Form1Template):
         btn_row.add_component(deny_btn)
         self._inbox_body.add_component(btn_row)
         self._inbox_body.add_component(fb_label)
+
+    # ── Lessons tab ───────────────────────────────────────────────────────────
+
+    def _build_lessons_layout(self):
+        view_row = FlowPanel(spacing_above='small', spacing_below='small')
+        self._lesson_view_btns = {}
+        for label, filt in [
+            ('Recent', 'recent'), ('Top Used', 'most_applied'),
+            ('Never Applied', 'never_applied'), ('Broken', 'broken'), ('Search', 'search'),
+        ]:
+            btn = Button(text=label, role='filled-button' if filt == 'recent' else 'tonal-button')
+            def _make_view_click(f):
+                def _h(**kw):
+                    self._set_lesson_view(f)
+                return _h
+            btn.set_event_handler('click', _make_view_click(filt))
+            view_row.add_component(btn)
+            self._lesson_view_btns[filt] = btn
+        self._lessons_panel.add_component(view_row)
+
+        self._lessons_search_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._lessons_search_box = TextBox(placeholder='Search lessons\u2026', width=200)
+        search_go = Button(text='Go', role='tonal-button')
+        search_go.set_event_handler('click', lambda **kw: self._load_lessons('search'))
+        self._lessons_search_row.add_component(self._lessons_search_box)
+        self._lessons_search_row.add_component(search_go)
+        self._lessons_search_row.visible = False
+        self._lessons_panel.add_component(self._lessons_search_row)
+
+        self._lessons_body = ColumnPanel()
+        self._lessons_panel.add_component(self._lessons_body)
+
+    def _set_lesson_view(self, filter):
+        self._lessons_current_filter = filter
+        for f, btn in self._lesson_view_btns.items():
+            btn.role = 'filled-button' if f == filter else 'tonal-button'
+        self._lessons_search_row.visible = (filter == 'search')
+        if filter != 'search':
+            self._load_lessons(filter)
+
+    def _load_lessons(self, filter):
+        self._lessons_body.clear()
+        self._lessons_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        try:
+            if filter == 'search':
+                query = (self._lessons_search_box.text or '').strip()
+                if not query:
+                    self._lessons_body.clear()
+                    self._lessons_body.add_component(Label(text='Enter a search query above.', role='body', font_size=16))
+                    return
+                lessons = anvil.server.call('search_lessons', query)
+            else:
+                lessons = anvil.server.call('get_lessons', filter)
+            self._lessons_body.clear()
+            if not lessons:
+                self._lessons_body.add_component(Label(text='No lessons found.', role='body', font_size=16))
+                return
+            self._lessons_body.add_component(Label(text=f'{len(lessons)} lesson(s)', role='body', font_size=14))
+            for lesson in lessons:
+                self._lessons_body.add_component(self._build_lesson_card(lesson, is_search=(filter == 'search')))
+        except Exception as e:
+            self._lessons_body.clear()
+            self._lessons_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _build_lesson_card(self, lesson, is_search=False):
+        lesson_id = lesson.get('id')
+        chromadb_id = lesson.get('chromadb_id')
+        title = (lesson.get('title') or '(untitled)')[:100]
+        category = lesson.get('category') or '\u2014'
+        times_applied = lesson.get('times_applied') or 0
+        confidence = lesson.get('confidence')
+        conf_str = f'{float(confidence):.2f}' if confidence is not None else '\u2014'
+        created = (lesson.get('created_at') or '')[:10]
+
+        card = ColumnPanel(role='outlined-card')
+        card.add_component(Label(text=title, bold=True, role='body', font_size=16))
+        meta = f'cat: {category}  |  applied: {times_applied}  |  conf: {conf_str}'
+        if created:
+            meta += f'  |  {created}'
+        if is_search and lesson.get('distance') is not None:
+            meta += f'  |  dist: {lesson["distance"]:.3f}'
+        card.add_component(Label(text=meta, role='body', font_size=14))
+
+        fb_label = Label(text='', role='body', font_size=14)
+        action_row = FlowPanel(spacing_above='none', spacing_below='none')
+
+        up_btn = Button(text='\U0001f44d', role='outlined-button')
+        down_btn = Button(text='\U0001f44e', role='outlined-button')
+        del_btn = Button(text='\U0001f5d1', role='outlined-button')
+
+        def _make_thumb(lid, delta, lbl):
+            def _h(**kw):
+                try:
+                    result = anvil.server.call('update_lesson', lid, delta)
+                    sign = '+' if delta > 0 else ''
+                    lbl.text = f'\u2705 conf {sign}{delta:.1f} \u2192 {result["confidence"]:.2f}'
+                except Exception as ex:
+                    lbl.text = f'\u274c {ex}'
+            return _h
+
+        def _make_delete(lid, cid, c, lbl):
+            def _h(**kw):
+                try:
+                    anvil.server.call('delete_lesson', lid, cid)
+                    c.visible = False
+                except Exception as ex:
+                    lbl.text = f'\u274c {ex}'
+            return _h
+
+        up_btn.set_event_handler('click', _make_thumb(lesson_id, 0.1, fb_label))
+        down_btn.set_event_handler('click', _make_thumb(lesson_id, -0.1, fb_label))
+        del_btn.set_event_handler('click', _make_delete(lesson_id, chromadb_id, card, fb_label))
+
+        action_row.add_component(up_btn)
+        action_row.add_component(down_btn)
+        action_row.add_component(del_btn)
+        card.add_component(action_row)
+        card.add_component(fb_label)
+        return card
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
