@@ -1,6 +1,7 @@
 from ._anvil_designer import Form1Template
 from anvil import *
 import anvil.server
+import anvil.js
 
 
 _STATUS_ICONS = {
@@ -14,6 +15,15 @@ _COLLAPSE = '\u25b6'  # ▶
 
 class Form1(Form1Template):
     def __init__(self, **properties):
+        # Hash routing — must run before init_components
+        try:
+            raw_hash = str(anvil.js.window.location.hash)
+            if 'EmbedControl' in raw_hash:
+                open_form('EmbedControl')
+                return
+        except Exception:
+            pass
+
         self.init_components(**properties)
         self._agent_card_panels = []  # [(name_lower, card_panel)]
         self._search_box = None
