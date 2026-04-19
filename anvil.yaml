@@ -1,4 +1,4 @@
-allow_embedding: false
+allow_embedding: true
 dependencies: []
 name: Claude Dashboard
 package_name: Claude_Dashboard
