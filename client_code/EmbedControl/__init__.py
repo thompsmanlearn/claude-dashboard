@@ -73,24 +73,22 @@ class EmbedControl(EmbedControlTemplate):
         self._start_feedback = Label(text='', role='body', font_size=13)
         p.add_component(self._start_feedback)
 
-        # ── 5. Output display ─────────────────────────────────────────────────
+        # ── 5. Autonomous mode toggle ─────────────────────────────────────────
         p.add_component(Label(text='\u2015' * 28, role='body', font_size=14))
-        p.add_component(Label(
-            text='Last Session', bold=True, role='body', font_size=15,
-            spacing_above='small', spacing_below='small',
-        ))
-        self._output_panel = ColumnPanel()
-        self._output_panel.add_component(Label(
-            text='No session data yet.', role='body', font_size=13,
-        ))
-        p.add_component(self._output_panel)
+        auto_row = FlowPanel(spacing_above='small', spacing_below='none')
+        self._auto_btn = Button(text='\u23f3 Checking\u2026', role='tonal-button')
+        self._auto_btn.set_event_handler('click', self._auto_mode_clicked)
+        auto_row.add_component(self._auto_btn)
+        p.add_component(auto_row)
+        self._auto_feedback = Label(text='', role='body', font_size=13)
+        p.add_component(self._auto_feedback)
 
     # ── Data loaders ──────────────────────────────────────────────────────────
 
     def _refresh_all(self):
         self._check_heartbeat()
         self._check_session_status()
-        self._load_last_output()
+        self._refresh_auto_status()
 
     def _check_heartbeat(self):
         try:
@@ -118,40 +116,36 @@ class EmbedControl(EmbedControlTemplate):
         except Exception as e:
             self._session_label.text = f'Status unknown: {e}'
 
-    def _load_last_output(self):
-        self._output_panel.clear()
+    def _refresh_auto_status(self):
         try:
             with anvil.server.no_loading_indicator:
-                artifacts = anvil.server.call('get_session_artifacts', 1)
-            if not artifacts:
-                self._output_panel.add_component(Label(
-                    text='No session artifacts yet.', role='body', font_size=13,
-                ))
-                return
-            a = artifacts[0]
-            title = a.get('title') or a.get('filename', '(unknown)')
-            date = a.get('date') or ''
-            content = a.get('content') or ''
-
-            self._output_panel.add_component(Label(
-                text=title[:80], bold=True, role='body', font_size=14,
-            ))
-            if date:
-                self._output_panel.add_component(Label(
-                    text=date, role='body', font_size=12,
-                ))
-
-            # Show first meaningful section (up to 400 chars)
-            preview = content[:400].strip()
-            if len(content) > 400:
-                preview += '\u2026'
-            self._output_panel.add_component(Label(
-                text=preview, role='body', font_size=13,
-            ))
+                s = anvil.server.call('get_autonomous_mode')
+            active = s.get('scheduler_active')
+            if active is True:
+                self._auto_btn.text = '\U0001f7e2 Autonomous: ON'
+                self._auto_btn.role = 'filled-button'
+            elif active is False:
+                self._auto_btn.text = '\u26aa Autonomous: OFF'
+                self._auto_btn.role = 'tonal-button'
+            else:
+                self._auto_btn.text = '\u2753 Autonomous: Unknown'
+                self._auto_btn.role = 'tonal-button'
         except Exception as e:
-            self._output_panel.add_component(Label(
-                text=f'Error loading output: {e}', role='body', font_size=13,
-            ))
+            self._auto_btn.text = f'\u274c Error: {e}'
+
+    def _auto_mode_clicked(self, **event_args):
+        self._auto_feedback.text = 'Updating\u2026'
+        try:
+            with anvil.server.no_loading_indicator:
+                s = anvil.server.call('get_autonomous_mode')
+            new_state = not s.get('scheduler_active', False)
+            with anvil.server.no_loading_indicator:
+                result = anvil.server.call('set_autonomous_mode', new_state)
+            self._refresh_auto_status()
+            errors = result.get('errors', [])
+            self._auto_feedback.text = ('Enabled' if new_state else 'Disabled') if not errors else 'Partial: ' + '; '.join(errors)
+        except Exception as e:
+            self._auto_feedback.text = f'\u274c {e}'
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
