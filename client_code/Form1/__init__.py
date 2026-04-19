@@ -23,6 +23,7 @@ class Form1(Form1Template):
         self._memory_offset = 0
         self._mem_page_size = 15
         self._memory_loaded = False
+        self._skills_loaded = False
         self._build_layout()
         self.refresh_data()
 
@@ -62,14 +63,17 @@ class Form1(Form1Template):
         self._sessions_tab_btn = Button(text='Sessions', role='tonal-button')
         self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
         self._memory_tab_btn = Button(text='Memory', role='tonal-button')
+        self._skills_tab_btn = Button(text='Skills', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
         self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
         self._memory_tab_btn.set_event_handler('click', self._show_memory_tab)
+        self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
         tab_row.add_component(self._fleet_tab_btn)
         tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._lessons_tab_btn)
         tab_row.add_component(self._memory_tab_btn)
+        tab_row.add_component(self._skills_tab_btn)
         self.content_panel.add_component(tab_row)
 
         # Fleet panel (default visible)
@@ -104,6 +108,12 @@ class Form1(Form1Template):
         self._memory_panel.visible = False
         self._build_memory_layout()
         self.content_panel.add_component(self._memory_panel)
+
+        # Skills panel (hidden by default)
+        self._skills_panel = ColumnPanel()
+        self._skills_panel.visible = False
+        self._build_skills_layout()
+        self.content_panel.add_component(self._skills_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -159,20 +169,24 @@ class Form1(Form1Template):
         self._sessions_panel.visible = False
         self._lessons_panel.visible = False
         self._memory_panel.visible = False
+        self._skills_panel.visible = False
         self._fleet_tab_btn.role = 'filled-button'
         self._sessions_tab_btn.role = 'tonal-button'
         self._lessons_tab_btn.role = 'tonal-button'
         self._memory_tab_btn.role = 'tonal-button'
+        self._skills_tab_btn.role = 'tonal-button'
 
     def _show_sessions_tab(self, **event_args):
         self._fleet_panel.visible = False
         self._sessions_panel.visible = True
         self._lessons_panel.visible = False
         self._memory_panel.visible = False
+        self._skills_panel.visible = False
         self._fleet_tab_btn.role = 'tonal-button'
         self._sessions_tab_btn.role = 'filled-button'
         self._lessons_tab_btn.role = 'tonal-button'
         self._memory_tab_btn.role = 'tonal-button'
+        self._skills_tab_btn.role = 'tonal-button'
         self._load_sessions()
 
     def _show_lessons_tab(self, **event_args):
@@ -180,10 +194,12 @@ class Form1(Form1Template):
         self._sessions_panel.visible = False
         self._lessons_panel.visible = True
         self._memory_panel.visible = False
+        self._skills_panel.visible = False
         self._fleet_tab_btn.role = 'tonal-button'
         self._sessions_tab_btn.role = 'tonal-button'
         self._lessons_tab_btn.role = 'filled-button'
         self._memory_tab_btn.role = 'tonal-button'
+        self._skills_tab_btn.role = 'tonal-button'
         if not self._lessons_loaded:
             self._load_lessons('recent')
             self._lessons_loaded = True
@@ -193,13 +209,30 @@ class Form1(Form1Template):
         self._sessions_panel.visible = False
         self._lessons_panel.visible = False
         self._memory_panel.visible = True
+        self._skills_panel.visible = False
         self._fleet_tab_btn.role = 'tonal-button'
         self._sessions_tab_btn.role = 'tonal-button'
         self._lessons_tab_btn.role = 'tonal-button'
         self._memory_tab_btn.role = 'filled-button'
+        self._skills_tab_btn.role = 'tonal-button'
         if not self._memory_loaded:
             self._load_memory_collections()
             self._memory_loaded = True
+
+    def _show_skills_tab(self, **event_args):
+        self._fleet_panel.visible = False
+        self._sessions_panel.visible = False
+        self._lessons_panel.visible = False
+        self._memory_panel.visible = False
+        self._skills_panel.visible = True
+        self._fleet_tab_btn.role = 'tonal-button'
+        self._sessions_tab_btn.role = 'tonal-button'
+        self._lessons_tab_btn.role = 'tonal-button'
+        self._memory_tab_btn.role = 'tonal-button'
+        self._skills_tab_btn.role = 'filled-button'
+        if not self._skills_loaded:
+            self._load_skills()
+            self._skills_loaded = True
 
     def refresh_data(self):
         self._load_status()
@@ -895,6 +928,100 @@ class Form1(Form1Template):
         except Exception as e:
             self._mem_supabase_body.clear()
             self._mem_supabase_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    # ── Skills tab ───────────────────────────────────────────────────────────
+
+    def _build_skills_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Skills', role='title', bold=True, font_size=20))
+        ref_btn = Button(text='\u21bb', role='text-button')
+        ref_btn.set_event_handler('click', lambda **kw: self._reload_skills())
+        hdr.add_component(ref_btn)
+        self._skills_panel.add_component(hdr)
+
+        self._skills_body = ColumnPanel()
+        self._skills_panel.add_component(self._skills_body)
+
+        self._skill_detail_panel = ColumnPanel()
+        self._skills_panel.add_component(self._skill_detail_panel)
+
+    def _reload_skills(self):
+        self._skills_loaded = False
+        self._skill_detail_panel.clear()
+        self._load_skills()
+        self._skills_loaded = True
+
+    def _load_skills(self):
+        self._skills_body.clear()
+        self._skills_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        try:
+            with anvil.server.no_loading_indicator:
+                skills = anvil.server.call('get_skills')
+            self._skills_body.clear()
+            self._skills_body.add_component(
+                Label(text=f'{len(skills)} skill(s)', role='body', font_size=14)
+            )
+            for skill in skills:
+                self._skills_body.add_component(self._build_skill_card(skill))
+        except Exception as e:
+            self._skills_body.clear()
+            self._skills_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _build_skill_card(self, skill):
+        name = skill.get('name', '')
+        description = skill.get('description') or '\u2014'
+        keywords = skill.get('trigger_keywords') or []
+        times_loaded = skill.get('times_loaded') or 0
+        last_loaded = (skill.get('last_loaded') or '')[:10] or 'never'
+
+        card = ColumnPanel(role='outlined-card')
+        card.add_component(Label(text=name, bold=True, role='body', font_size=16))
+        meta = f'loaded: {times_loaded}  |  last: {last_loaded}'
+        card.add_component(Label(text=meta, role='body', font_size=13))
+
+        desc_preview = description[:100] + ('\u2026' if len(description) > 100 else '')
+        card.add_component(Label(text=desc_preview, role='body', font_size=14))
+
+        if keywords:
+            card.add_component(Label(text='Keywords: ' + ', '.join(keywords[:6]), role='body', font_size=12))
+
+        view_btn = Button(text='View Content', role='tonal-button')
+
+        def _make_view(n):
+            def _h(**kw):
+                self._load_skill_content(n)
+            return _h
+
+        view_btn.set_event_handler('click', _make_view(name))
+        card.add_component(view_btn)
+        return card
+
+    def _load_skill_content(self, name):
+        self._skill_detail_panel.clear()
+        self._skill_detail_panel.add_component(
+            Label(text=f'Loading {name}\u2026', role='body', font_size=14)
+        )
+        try:
+            with anvil.server.no_loading_indicator:
+                result = anvil.server.call('get_skill', name)
+            self._skill_detail_panel.clear()
+            hdr = FlowPanel(spacing_above='small', spacing_below='none')
+            hdr.add_component(Label(text=result['name'], bold=True, role='body', font_size=16))
+            close_btn = Button(text='\u00d7', role='text-button')
+            close_btn.set_event_handler('click', lambda **kw: self._skill_detail_panel.clear())
+            hdr.add_component(close_btn)
+            self._skill_detail_panel.add_component(hdr)
+            self._skill_detail_panel.add_component(
+                Label(text=result['file_path'], role='body', font_size=12)
+            )
+            content_card = ColumnPanel(role='outlined-card')
+            content_card.add_component(Label(text=result['content'], role='body', font_size=13))
+            self._skill_detail_panel.add_component(content_card)
+        except Exception as e:
+            self._skill_detail_panel.clear()
+            self._skill_detail_panel.add_component(
+                Label(text=f'Error: {e}', role='body', font_size=14)
+            )
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
