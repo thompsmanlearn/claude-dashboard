@@ -738,7 +738,7 @@ class Form1(Form1Template):
         rp_btn = Button(text='Research Papers', role='tonal-button')
         el_btn = Button(text='Error Log', role='tonal-button')
         rp_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('research_papers'))
-        el_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('error_log'))
+        el_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('error_logs'))
         sb_row.add_component(rp_btn)
         sb_row.add_component(el_btn)
         self._memory_panel.add_component(sb_row)
@@ -917,7 +917,7 @@ class Form1(Form1Template):
                     card.add_component(Label(text=title, bold=True, role='body', font_size=14))
                     meta = f'score: {score}  |  status: {status}  |  {date}'
                     card.add_component(Label(text=meta, role='body', font_size=12))
-                elif table == 'error_log':
+                elif table == 'error_logs':
                     wf = row.get('workflow_name') or '(unknown)'
                     msg = (row.get('error_message') or '')[:120]
                     date = (row.get('created_at') or '')[:16].replace('T', ' ')
