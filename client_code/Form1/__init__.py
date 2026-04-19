@@ -19,6 +19,10 @@ class Form1(Form1Template):
         self._search_box = None
         self._lessons_current_filter = 'recent'
         self._lessons_loaded = False
+        self._memory_selected_coll = None
+        self._memory_offset = 0
+        self._mem_page_size = 15
+        self._memory_loaded = False
         self._build_layout()
         self.refresh_data()
 
@@ -57,12 +61,15 @@ class Form1(Form1Template):
         self._fleet_tab_btn = Button(text='Fleet', role='filled-button')
         self._sessions_tab_btn = Button(text='Sessions', role='tonal-button')
         self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
+        self._memory_tab_btn = Button(text='Memory', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
         self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
+        self._memory_tab_btn.set_event_handler('click', self._show_memory_tab)
         tab_row.add_component(self._fleet_tab_btn)
         tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._lessons_tab_btn)
+        tab_row.add_component(self._memory_tab_btn)
         self.content_panel.add_component(tab_row)
 
         # Fleet panel (default visible)
@@ -91,6 +98,12 @@ class Form1(Form1Template):
         self._lessons_panel.visible = False
         self._build_lessons_layout()
         self.content_panel.add_component(self._lessons_panel)
+
+        # Memory panel (hidden by default)
+        self._memory_panel = ColumnPanel()
+        self._memory_panel.visible = False
+        self._build_memory_layout()
+        self.content_panel.add_component(self._memory_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -145,29 +158,48 @@ class Form1(Form1Template):
         self._fleet_panel.visible = True
         self._sessions_panel.visible = False
         self._lessons_panel.visible = False
+        self._memory_panel.visible = False
         self._fleet_tab_btn.role = 'filled-button'
         self._sessions_tab_btn.role = 'tonal-button'
         self._lessons_tab_btn.role = 'tonal-button'
+        self._memory_tab_btn.role = 'tonal-button'
 
     def _show_sessions_tab(self, **event_args):
         self._fleet_panel.visible = False
         self._sessions_panel.visible = True
         self._lessons_panel.visible = False
+        self._memory_panel.visible = False
         self._fleet_tab_btn.role = 'tonal-button'
         self._sessions_tab_btn.role = 'filled-button'
         self._lessons_tab_btn.role = 'tonal-button'
+        self._memory_tab_btn.role = 'tonal-button'
         self._load_sessions()
 
     def _show_lessons_tab(self, **event_args):
         self._fleet_panel.visible = False
         self._sessions_panel.visible = False
         self._lessons_panel.visible = True
+        self._memory_panel.visible = False
         self._fleet_tab_btn.role = 'tonal-button'
         self._sessions_tab_btn.role = 'tonal-button'
         self._lessons_tab_btn.role = 'filled-button'
+        self._memory_tab_btn.role = 'tonal-button'
         if not self._lessons_loaded:
             self._load_lessons('recent')
             self._lessons_loaded = True
+
+    def _show_memory_tab(self, **event_args):
+        self._fleet_panel.visible = False
+        self._sessions_panel.visible = False
+        self._lessons_panel.visible = False
+        self._memory_panel.visible = True
+        self._fleet_tab_btn.role = 'tonal-button'
+        self._sessions_tab_btn.role = 'tonal-button'
+        self._lessons_tab_btn.role = 'tonal-button'
+        self._memory_tab_btn.role = 'filled-button'
+        if not self._memory_loaded:
+            self._load_memory_collections()
+            self._memory_loaded = True
 
     def refresh_data(self):
         self._load_status()
@@ -635,6 +667,234 @@ class Form1(Form1Template):
         card.add_component(action_row)
         card.add_component(fb_label)
         return card
+
+    # ── Memory tab ────────────────────────────────────────────────────────────
+
+    def _build_memory_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Memory', role='title', bold=True, font_size=20))
+        ref_btn = Button(text='\u21bb', role='text-button')
+        ref_btn.set_event_handler('click', lambda **kw: self._refresh_memory())
+        hdr.add_component(ref_btn)
+        self._memory_panel.add_component(hdr)
+
+        # ChromaDB section
+        self._memory_panel.add_component(Label(text='ChromaDB', bold=True, role='body', font_size=18))
+        self._mem_colls_body = ColumnPanel()
+        self._memory_panel.add_component(self._mem_colls_body)
+
+        # Search row (hidden until a collection is selected)
+        self._mem_search_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._mem_search_box = TextBox(placeholder='Semantic search\u2026', width=200)
+        go_btn = Button(text='Search', role='tonal-button')
+        go_btn.set_event_handler('click', lambda **kw: self._do_collection_search())
+        self._mem_search_row.add_component(self._mem_search_box)
+        self._mem_search_row.add_component(go_btn)
+        self._mem_search_row.visible = False
+        self._memory_panel.add_component(self._mem_search_row)
+
+        # Document list area
+        self._mem_docs_body = ColumnPanel()
+        self._memory_panel.add_component(self._mem_docs_body)
+
+        # Supabase section
+        self._memory_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+        self._memory_panel.add_component(Label(text='Supabase', bold=True, role='body', font_size=18))
+
+        sb_row = FlowPanel(spacing_above='none', spacing_below='small')
+        rp_btn = Button(text='Research Papers', role='tonal-button')
+        el_btn = Button(text='Error Log', role='tonal-button')
+        rp_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('research_papers'))
+        el_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('error_log'))
+        sb_row.add_component(rp_btn)
+        sb_row.add_component(el_btn)
+        self._memory_panel.add_component(sb_row)
+
+        self._mem_supabase_body = ColumnPanel()
+        self._memory_panel.add_component(self._mem_supabase_body)
+
+    def _refresh_memory(self):
+        self._memory_loaded = False
+        self._memory_selected_coll = None
+        self._memory_offset = 0
+        self._mem_search_row.visible = False
+        self._mem_docs_body.clear()
+        self._mem_supabase_body.clear()
+        self._load_memory_collections()
+        self._memory_loaded = True
+
+    def _load_memory_collections(self):
+        self._mem_colls_body.clear()
+        self._mem_colls_body.add_component(Label(text='Loading collections\u2026', role='body', font_size=16))
+        try:
+            with anvil.server.no_loading_indicator:
+                stats = anvil.server.call('get_collection_stats')
+            self._mem_colls_body.clear()
+            row = FlowPanel(spacing_above='none', spacing_below='small')
+            for coll in stats:
+                btn = Button(text=f"{coll['name']} ({coll['count']})", role='tonal-button')
+                def _make_select(name):
+                    def _h(**kw):
+                        self._memory_selected_coll = name
+                        self._memory_offset = 0
+                        self._mem_search_box.text = ''
+                        self._mem_search_row.visible = True
+                        self._load_collection_docs(0)
+                    return _h
+                btn.set_event_handler('click', _make_select(coll['name']))
+                row.add_component(btn)
+            self._mem_colls_body.add_component(row)
+        except Exception as e:
+            self._mem_colls_body.clear()
+            self._mem_colls_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _load_collection_docs(self, offset):
+        self._mem_docs_body.clear()
+        self._mem_docs_body.add_component(
+            Label(text=f'Loading {self._memory_selected_coll}\u2026', role='body', font_size=16)
+        )
+        try:
+            with anvil.server.no_loading_indicator:
+                result = anvil.server.call('browse_collection', self._memory_selected_coll, self._mem_page_size, offset)
+            self._mem_docs_body.clear()
+            total = result['total']
+            docs = result['docs']
+            self._memory_offset = offset
+
+            info = Label(
+                text=f'{self._memory_selected_coll} — {total} docs (showing {offset+1}–{min(offset+len(docs), total)})',
+                role='body', font_size=14,
+            )
+            self._mem_docs_body.add_component(info)
+
+            for doc in docs:
+                self._mem_docs_body.add_component(self._build_doc_card(doc, self._memory_selected_coll))
+
+            # Pagination
+            nav = FlowPanel(spacing_above='small', spacing_below='none')
+            if offset > 0:
+                prev_btn = Button(text='\u25c0 Prev', role='tonal-button')
+                prev_btn.set_event_handler('click', lambda **kw: self._load_collection_docs(self._memory_offset - self._mem_page_size))
+                nav.add_component(prev_btn)
+            if offset + self._mem_page_size < total:
+                next_btn = Button(text='Next \u25b6', role='tonal-button')
+                next_btn.set_event_handler('click', lambda **kw: self._load_collection_docs(self._memory_offset + self._mem_page_size))
+                nav.add_component(next_btn)
+            if nav.get_components():
+                self._mem_docs_body.add_component(nav)
+        except Exception as e:
+            self._mem_docs_body.clear()
+            self._mem_docs_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _do_collection_search(self):
+        if not self._memory_selected_coll:
+            return
+        query = (self._mem_search_box.text or '').strip()
+        if not query:
+            self._load_collection_docs(0)
+            return
+        self._mem_docs_body.clear()
+        self._mem_docs_body.add_component(Label(text='Searching\u2026', role='body', font_size=16))
+        try:
+            with anvil.server.no_loading_indicator:
+                results = anvil.server.call('search_collection', self._memory_selected_coll, query)
+            self._mem_docs_body.clear()
+            if not results:
+                self._mem_docs_body.add_component(Label(text='No results.', role='body', font_size=16))
+                return
+            self._mem_docs_body.add_component(
+                Label(text=f'{len(results)} result(s) for "{query}"', role='body', font_size=14)
+            )
+            for doc in results:
+                card = self._build_doc_card(doc, self._memory_selected_coll)
+                if doc.get('distance') is not None:
+                    card.add_component(
+                        Label(text=f'dist: {doc["distance"]:.3f}', role='body', font_size=12)
+                    )
+                self._mem_docs_body.add_component(card)
+        except Exception as e:
+            self._mem_docs_body.clear()
+            self._mem_docs_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _build_doc_card(self, doc, collection):
+        doc_id = doc['id']
+        text = (doc.get('document') or '(empty)')
+        meta = doc.get('metadata') or {}
+        title = meta.get('title') or meta.get('lesson_title') or doc_id[:24]
+
+        card = ColumnPanel(role='outlined-card')
+        card.add_component(Label(text=str(title)[:80], bold=True, role='body', font_size=14))
+
+        expand_btn = Button(text='+', role='text-button')
+        hdr = FlowPanel(spacing_above='none', spacing_below='none')
+        hdr.add_component(Label(text=doc_id[:24] + '\u2026', role='body', font_size=12))
+        hdr.add_component(expand_btn)
+        card.add_component(hdr)
+
+        detail = ColumnPanel()
+        detail.visible = False
+        detail.add_component(Label(text=text, role='body', font_size=13))
+        card.add_component(detail)
+
+        fb_lbl = Label(text='', role='body', font_size=13)
+        del_btn = Button(text='\U0001f5d1 Delete', role='outlined-button')
+
+        def _make_delete(cid, c, lbl, coll_name):
+            def _h(**kw):
+                try:
+                    anvil.server.call('delete_document', coll_name, cid)
+                    c.visible = False
+                except Exception as ex:
+                    lbl.text = f'\u274c {ex}'
+            return _h
+
+        del_btn.set_event_handler('click', _make_delete(doc_id, card, fb_lbl, collection))
+
+        def _make_expand(det, btn):
+            def _e(**kw):
+                det.visible = not det.visible
+                btn.text = '\u2212' if det.visible else '+'
+            return _e
+
+        expand_btn.set_event_handler('click', _make_expand(detail, expand_btn))
+        card.add_component(del_btn)
+        card.add_component(fb_lbl)
+        return card
+
+    def _load_supabase_table(self, table):
+        self._mem_supabase_body.clear()
+        self._mem_supabase_body.add_component(Label(text=f'Loading {table}\u2026', role='body', font_size=16))
+        try:
+            with anvil.server.no_loading_indicator:
+                rows = anvil.server.call('get_table_rows', table)
+            self._mem_supabase_body.clear()
+            self._mem_supabase_body.add_component(
+                Label(text=f'{table} — {len(rows)} row(s)', bold=True, role='body', font_size=14)
+            )
+            if not rows:
+                self._mem_supabase_body.add_component(Label(text='No rows.', role='body', font_size=16))
+                return
+            for row in rows:
+                card = ColumnPanel(role='outlined-card')
+                if table == 'research_papers':
+                    title = (row.get('title') or '(no title)')[:80]
+                    score = row.get('relevance_score')
+                    status = row.get('status') or '\u2014'
+                    date = (row.get('discovered_at') or '')[:10]
+                    card.add_component(Label(text=title, bold=True, role='body', font_size=14))
+                    meta = f'score: {score}  |  status: {status}  |  {date}'
+                    card.add_component(Label(text=meta, role='body', font_size=12))
+                elif table == 'error_log':
+                    wf = row.get('workflow_name') or '(unknown)'
+                    msg = (row.get('error_message') or '')[:120]
+                    date = (row.get('created_at') or '')[:16].replace('T', ' ')
+                    card.add_component(Label(text=wf, bold=True, role='body', font_size=14))
+                    card.add_component(Label(text=msg, role='body', font_size=13))
+                    card.add_component(Label(text=date, role='body', font_size=12))
+                self._mem_supabase_body.add_component(card)
+        except Exception as e:
+            self._mem_supabase_body.clear()
+            self._mem_supabase_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
