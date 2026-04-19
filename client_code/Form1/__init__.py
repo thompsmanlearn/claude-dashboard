@@ -170,6 +170,23 @@ class Form1(Form1Template):
         self._directive_feedback = Label(text='', role='body', font_size=16)
         panel.add_component(self._directive_feedback)
 
+        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+
+        panel.add_component(Label(text='Autonomous Mode', bold=True, role='body', font_size=16))
+        panel.add_component(Label(text='Toggles growth scheduler + lean auto-cycle.', role='body', font_size=16))
+
+        auto_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._auto_btn = Button(text='\u23f3 Checking\u2026', role='tonal-button')
+        self._auto_btn.set_event_handler('click', self._auto_mode_clicked)
+        auto_row.add_component(self._auto_btn)
+        refresh_auto_btn = Button(text='\u21bb', role='text-button')
+        refresh_auto_btn.set_event_handler('click', lambda **kw: self._refresh_auto_status())
+        auto_row.add_component(refresh_auto_btn)
+        panel.add_component(auto_row)
+
+        self._auto_feedback = Label(text='', role='body', font_size=16)
+        panel.add_component(self._auto_feedback)
+
     # ── Data loaders ──────────────────────────────────────────────────────────
 
     def _refresh_lean_status(self):
@@ -185,6 +202,40 @@ class Form1(Form1Template):
         except Exception as e:
             self._lean_status_label.text = f'Status unknown: {e}'
             self._lean_trigger_btn.enabled = True
+
+    def _refresh_auto_status(self):
+        try:
+            with anvil.server.no_loading_indicator:
+                s = anvil.server.call('get_autonomous_mode')
+            active = s.get('scheduler_active')
+            if active is True:
+                self._auto_btn.text = '\U0001f7e2 Autonomous: ON'
+                self._auto_btn.role = 'filled-button'
+            elif active is False:
+                self._auto_btn.text = '\u26aa Autonomous: OFF'
+                self._auto_btn.role = 'tonal-button'
+            else:
+                self._auto_btn.text = '\u2753 Autonomous: Unknown'
+                self._auto_btn.role = 'tonal-button'
+        except Exception as e:
+            self._auto_btn.text = f'\u274c Error: {e}'
+
+    def _auto_mode_clicked(self, **event_args):
+        self._auto_feedback.text = 'Updating\u2026'
+        try:
+            with anvil.server.no_loading_indicator:
+                s = anvil.server.call('get_autonomous_mode')
+            new_state = not s.get('scheduler_active', False)
+            with anvil.server.no_loading_indicator:
+                result = anvil.server.call('set_autonomous_mode', new_state)
+            self._refresh_auto_status()
+            errors = result.get('errors', [])
+            if errors:
+                self._auto_feedback.text = 'Partial: ' + '; '.join(errors)
+            else:
+                self._auto_feedback.text = 'Enabled' if new_state else 'Disabled'
+        except Exception as e:
+            self._auto_feedback.text = f'\u274c Error: {e}'
 
     def _set_tab(self, active):
         panels = {
@@ -245,6 +296,7 @@ class Form1(Form1Template):
         self._load_queue()
         self._load_inbox()
         self._refresh_lean_status()
+        self._refresh_auto_status()
         if not self._fleet_panel.visible:
             self._load_lessons(self._lessons_current_filter)
             self._lessons_loaded = True
