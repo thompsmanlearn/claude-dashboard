@@ -140,14 +140,6 @@ class Form1(Form1Template):
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
 
-        status_row = FlowPanel(spacing_above='none', spacing_below='small')
-        self._lean_status_label = Label(text='\u23f3 Checking\u2026', role='body', font_size=16)
-        status_row.add_component(self._lean_status_label)
-        refresh_status_btn = Button(text='\u21bb', role='text-button')
-        refresh_status_btn.set_event_handler('click', lambda **kw: self._refresh_lean_status())
-        status_row.add_component(refresh_status_btn)
-        panel.add_component(status_row)
-
         self._lean_trigger_btn = Button(text='Trigger Lean Session', role='tonal-button')
         self._lean_trigger_btn.set_event_handler('click', self._trigger_lean_clicked)
         panel.add_component(self._lean_trigger_btn)
@@ -193,14 +185,8 @@ class Form1(Form1Template):
         try:
             with anvil.server.no_loading_indicator:
                 s = anvil.server.call('get_lean_status')
-            if s['running']:
-                self._lean_status_label.text = f"\U0001f7e1 Running (PID: {s['pid']})"
-                self._lean_trigger_btn.enabled = False
-            else:
-                self._lean_status_label.text = '\U0001f7e2 Idle'
-                self._lean_trigger_btn.enabled = True
-        except Exception as e:
-            self._lean_status_label.text = f'Status unknown: {e}'
+            self._lean_trigger_btn.enabled = not s['running']
+        except Exception:
             self._lean_trigger_btn.enabled = True
 
     def _refresh_auto_status(self):
