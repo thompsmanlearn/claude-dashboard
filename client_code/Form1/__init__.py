@@ -24,6 +24,9 @@ class Form1(Form1Template):
         self._mem_page_size = 15
         self._memory_loaded = False
         self._skills_loaded = False
+        self._artifacts_loaded = False
+        self._artifacts_agent_filter = None
+        self._artifacts_type_filter = None
         self._build_layout()
         self.refresh_data()
 
@@ -64,16 +67,19 @@ class Form1(Form1Template):
         self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
         self._memory_tab_btn = Button(text='Memory', role='tonal-button')
         self._skills_tab_btn = Button(text='Skills', role='tonal-button')
+        self._artifacts_tab_btn = Button(text='Artifacts', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
         self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
         self._memory_tab_btn.set_event_handler('click', self._show_memory_tab)
         self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
+        self._artifacts_tab_btn.set_event_handler('click', self._show_artifacts_tab)
         tab_row.add_component(self._fleet_tab_btn)
         tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._lessons_tab_btn)
         tab_row.add_component(self._memory_tab_btn)
         tab_row.add_component(self._skills_tab_btn)
+        tab_row.add_component(self._artifacts_tab_btn)
         self.content_panel.add_component(tab_row)
 
         # Fleet panel (default visible)
@@ -114,6 +120,12 @@ class Form1(Form1Template):
         self._skills_panel.visible = False
         self._build_skills_layout()
         self.content_panel.add_component(self._skills_panel)
+
+        # Artifacts panel (hidden by default)
+        self._artifacts_panel = ColumnPanel()
+        self._artifacts_panel.visible = False
+        self._build_artifacts_layout()
+        self.content_panel.add_component(self._artifacts_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -164,75 +176,58 @@ class Form1(Form1Template):
             self._lean_status_label.text = f'Status unknown: {e}'
             self._lean_trigger_btn.enabled = True
 
+    def _set_tab(self, active):
+        panels = {
+            'fleet': self._fleet_panel,
+            'sessions': self._sessions_panel,
+            'lessons': self._lessons_panel,
+            'memory': self._memory_panel,
+            'skills': self._skills_panel,
+            'artifacts': self._artifacts_panel,
+        }
+        btns = {
+            'fleet': self._fleet_tab_btn,
+            'sessions': self._sessions_tab_btn,
+            'lessons': self._lessons_tab_btn,
+            'memory': self._memory_tab_btn,
+            'skills': self._skills_tab_btn,
+            'artifacts': self._artifacts_tab_btn,
+        }
+        for name, panel in panels.items():
+            panel.visible = (name == active)
+        for name, btn in btns.items():
+            btn.role = 'filled-button' if name == active else 'tonal-button'
+
     def _show_fleet_tab(self, **event_args):
-        self._fleet_panel.visible = True
-        self._sessions_panel.visible = False
-        self._lessons_panel.visible = False
-        self._memory_panel.visible = False
-        self._skills_panel.visible = False
-        self._fleet_tab_btn.role = 'filled-button'
-        self._sessions_tab_btn.role = 'tonal-button'
-        self._lessons_tab_btn.role = 'tonal-button'
-        self._memory_tab_btn.role = 'tonal-button'
-        self._skills_tab_btn.role = 'tonal-button'
+        self._set_tab('fleet')
 
     def _show_sessions_tab(self, **event_args):
-        self._fleet_panel.visible = False
-        self._sessions_panel.visible = True
-        self._lessons_panel.visible = False
-        self._memory_panel.visible = False
-        self._skills_panel.visible = False
-        self._fleet_tab_btn.role = 'tonal-button'
-        self._sessions_tab_btn.role = 'filled-button'
-        self._lessons_tab_btn.role = 'tonal-button'
-        self._memory_tab_btn.role = 'tonal-button'
-        self._skills_tab_btn.role = 'tonal-button'
+        self._set_tab('sessions')
         self._load_sessions()
 
     def _show_lessons_tab(self, **event_args):
-        self._fleet_panel.visible = False
-        self._sessions_panel.visible = False
-        self._lessons_panel.visible = True
-        self._memory_panel.visible = False
-        self._skills_panel.visible = False
-        self._fleet_tab_btn.role = 'tonal-button'
-        self._sessions_tab_btn.role = 'tonal-button'
-        self._lessons_tab_btn.role = 'filled-button'
-        self._memory_tab_btn.role = 'tonal-button'
-        self._skills_tab_btn.role = 'tonal-button'
+        self._set_tab('lessons')
         if not self._lessons_loaded:
             self._load_lessons('recent')
             self._lessons_loaded = True
 
     def _show_memory_tab(self, **event_args):
-        self._fleet_panel.visible = False
-        self._sessions_panel.visible = False
-        self._lessons_panel.visible = False
-        self._memory_panel.visible = True
-        self._skills_panel.visible = False
-        self._fleet_tab_btn.role = 'tonal-button'
-        self._sessions_tab_btn.role = 'tonal-button'
-        self._lessons_tab_btn.role = 'tonal-button'
-        self._memory_tab_btn.role = 'filled-button'
-        self._skills_tab_btn.role = 'tonal-button'
+        self._set_tab('memory')
         if not self._memory_loaded:
             self._load_memory_collections()
             self._memory_loaded = True
 
     def _show_skills_tab(self, **event_args):
-        self._fleet_panel.visible = False
-        self._sessions_panel.visible = False
-        self._lessons_panel.visible = False
-        self._memory_panel.visible = False
-        self._skills_panel.visible = True
-        self._fleet_tab_btn.role = 'tonal-button'
-        self._sessions_tab_btn.role = 'tonal-button'
-        self._lessons_tab_btn.role = 'tonal-button'
-        self._memory_tab_btn.role = 'tonal-button'
-        self._skills_tab_btn.role = 'filled-button'
+        self._set_tab('skills')
         if not self._skills_loaded:
             self._load_skills()
             self._skills_loaded = True
+
+    def _show_artifacts_tab(self, **event_args):
+        self._set_tab('artifacts')
+        if not self._artifacts_loaded:
+            self._load_artifacts()
+            self._artifacts_loaded = True
 
     def refresh_data(self):
         self._load_status()
@@ -928,6 +923,178 @@ class Form1(Form1Template):
         except Exception as e:
             self._mem_supabase_body.clear()
             self._mem_supabase_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    # ── Artifacts tab ────────────────────────────────────────────────────────
+
+    def _build_artifacts_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Artifacts', role='title', bold=True, font_size=20))
+        ref_btn = Button(text='\u21bb', role='text-button')
+        ref_btn.set_event_handler('click', lambda **kw: self._reload_artifacts())
+        hdr.add_component(ref_btn)
+        self._artifacts_panel.add_component(hdr)
+
+        self._artifacts_filter_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._artifacts_panel.add_component(self._artifacts_filter_row)
+
+        self._artifacts_body = ColumnPanel()
+        self._artifacts_panel.add_component(self._artifacts_body)
+
+    def _reload_artifacts(self):
+        self._artifacts_loaded = False
+        self._artifacts_agent_filter = None
+        self._artifacts_type_filter = None
+        self._load_artifacts()
+        self._artifacts_loaded = True
+
+    def _load_artifacts(self):
+        self._artifacts_body.clear()
+        self._artifacts_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        try:
+            with anvil.server.no_loading_indicator:
+                meta = anvil.server.call('get_artifact_agents')
+                artifacts = anvil.server.call(
+                    'get_artifacts',
+                    self._artifacts_agent_filter,
+                    self._artifacts_type_filter,
+                )
+            self._build_artifact_filters(meta)
+            self._artifacts_body.clear()
+            self._artifacts_body.add_component(
+                Label(text=f'{len(artifacts)} artifact(s)', role='body', font_size=14)
+            )
+            for artifact in artifacts:
+                self._artifacts_body.add_component(self._build_artifact_row(artifact))
+        except Exception as e:
+            self._artifacts_body.clear()
+            self._artifacts_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _build_artifact_filters(self, meta):
+        self._artifacts_filter_row.clear()
+        all_btn = Button(text='All', role='filled-button' if not self._artifacts_agent_filter and not self._artifacts_type_filter else 'tonal-button')
+
+        def _clear_filters(**kw):
+            self._artifacts_agent_filter = None
+            self._artifacts_type_filter = None
+            self._artifacts_loaded = False
+            self._load_artifacts()
+            self._artifacts_loaded = True
+
+        all_btn.set_event_handler('click', _clear_filters)
+        self._artifacts_filter_row.add_component(all_btn)
+
+        for agent in meta.get('agents', []):
+            btn = Button(
+                text=agent[:20],
+                role='filled-button' if self._artifacts_agent_filter == agent else 'tonal-button',
+            )
+            def _make_agent_filter(a):
+                def _h(**kw):
+                    self._artifacts_agent_filter = a
+                    self._artifacts_type_filter = None
+                    self._artifacts_loaded = False
+                    self._load_artifacts()
+                    self._artifacts_loaded = True
+                return _h
+            btn.set_event_handler('click', _make_agent_filter(agent))
+            self._artifacts_filter_row.add_component(btn)
+
+        for atype in meta.get('types', []):
+            btn = Button(
+                text=atype[:20],
+                role='filled-button' if self._artifacts_type_filter == atype else 'tonal-button',
+            )
+            def _make_type_filter(t):
+                def _h(**kw):
+                    self._artifacts_type_filter = t
+                    self._artifacts_agent_filter = None
+                    self._artifacts_loaded = False
+                    self._load_artifacts()
+                    self._artifacts_loaded = True
+                return _h
+            btn.set_event_handler('click', _make_type_filter(atype))
+            self._artifacts_filter_row.add_component(btn)
+
+    def _build_artifact_row(self, artifact):
+        artifact_id = artifact.get('id')
+        agent = artifact.get('agent_name', '')
+        atype = artifact.get('artifact_type', '')
+        summary = (artifact.get('summary') or '(no summary)')[:120]
+        confidence = artifact.get('confidence')
+        conf_str = f'{float(confidence):.2f}' if confidence is not None else '\u2014'
+        created = (artifact.get('created_at') or '')[:10]
+        rating = artifact.get('bill_rating')
+        reviewed = artifact.get('reviewed_by_bill', False)
+
+        card = ColumnPanel(role='outlined-card')
+
+        hdr = FlowPanel(spacing_above='none', spacing_below='none')
+        hdr.add_component(Label(text=f'{agent}', bold=True, role='body', font_size=15))
+        expand_btn = Button(text='+', role='text-button')
+        hdr.add_component(expand_btn)
+        card.add_component(hdr)
+
+        type_row = f'{atype}  |  conf: {conf_str}  |  {created}'
+        if reviewed:
+            type_row += f'  |  \U0001f44d' if rating == 1 else (f'  |  \U0001f44e' if rating == -1 else '  |  reviewed')
+        card.add_component(Label(text=type_row, role='body', font_size=13))
+        card.add_component(Label(text=summary, role='body', font_size=14))
+
+        detail = ColumnPanel()
+        detail.visible = False
+        card.add_component(detail)
+
+        fb_label = Label(text='', role='body', font_size=13)
+
+        def _make_load_detail(aid, det):
+            def _h(**kw):
+                if det.get_components():
+                    det.visible = not det.visible
+                    expand_btn.text = '\u2212' if det.visible else '+'
+                    return
+                det.add_component(Label(text='Loading\u2026', role='body', font_size=13))
+                try:
+                    with anvil.server.no_loading_indicator:
+                        full = anvil.server.call('get_artifact', aid)
+                    det.clear()
+                    content = full.get('content')
+                    if isinstance(content, dict):
+                        for k, v in content.items():
+                            det.add_component(Label(text=f'{k}: {str(v)[:200]}', role='body', font_size=13))
+                    else:
+                        det.add_component(Label(text=str(content)[:800], role='body', font_size=13))
+                    if full.get('bill_comment'):
+                        det.add_component(Label(text=f'Comment: {full["bill_comment"]}', role='body', font_size=13))
+                    # Rating row
+                    rate_row = FlowPanel(spacing_above='none', spacing_below='none')
+                    up = Button(text='\U0001f44d', role='outlined-button')
+                    dn = Button(text='\U0001f44e', role='outlined-button')
+                    def _make_rate(aid2, r, lbl):
+                        def _h2(**kw):
+                            try:
+                                anvil.server.call('rate_artifact', aid2, r)
+                                lbl.text = '\u2705 Rated'
+                                up.enabled = False
+                                dn.enabled = False
+                            except Exception as ex:
+                                lbl.text = f'\u274c {ex}'
+                        return _h2
+                    up.set_event_handler('click', _make_rate(aid, 1, fb_label))
+                    dn.set_event_handler('click', _make_rate(aid, -1, fb_label))
+                    rate_row.add_component(up)
+                    rate_row.add_component(dn)
+                    det.add_component(rate_row)
+                    det.visible = True
+                    expand_btn.text = '\u2212'
+                except Exception as ex:
+                    det.clear()
+                    det.add_component(Label(text=f'Error: {ex}', role='body', font_size=13))
+                    det.visible = True
+            return _h
+
+        expand_btn.set_event_handler('click', _make_load_detail(artifact_id, detail))
+        card.add_component(fb_label)
+        return card
 
     # ── Skills tab ───────────────────────────────────────────────────────────
 
