@@ -166,9 +166,15 @@ class EmbedControl(EmbedControlTemplate):
             self._dir_btn.enabled = True
 
     def _start_clicked(self, **event_args):
-        self._start_feedback.text = 'Starting\u2026'
+        self._start_feedback.text = 'Checking\u2026'
         self._start_btn.enabled = False
         try:
+            with anvil.server.no_loading_indicator:
+                s = anvil.server.call('get_lean_status')
+            if s.get('running'):
+                self._start_feedback.text = f'\u26a0\ufe0f Claude already running (PID {s["pid"]}) \u2014 close that session first.'
+                self._start_btn.enabled = False
+                return
             result = anvil.server.call('trigger_lean_session')
             self._start_feedback.text = result.get('message', '\u2705 Session triggered.')
         except Exception as e:
