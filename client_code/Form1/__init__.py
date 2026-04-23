@@ -963,7 +963,7 @@ class Form1(Form1Template):
                 elif table == 'error_logs':
                     wf = row.get('workflow_name') or '(unknown)'
                     msg = (row.get('error_message') or '')[:120]
-                    date = (row.get('created_at') or '')[:16].replace('T', ' ')
+                    date = (row.get('timestamp') or '')[:16].replace('T', ' ')
                     card.add_component(Label(text=wf, bold=True, role='body', font_size=14))
                     card.add_component(Label(text=msg, role='body', font_size=13))
                     card.add_component(Label(text=date, role='body', font_size=12))
