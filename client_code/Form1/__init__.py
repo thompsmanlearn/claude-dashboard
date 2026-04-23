@@ -531,6 +531,19 @@ class Form1(Form1Template):
         self._sessions_status_card = ColumnPanel(role='outlined-card')
         self._sessions_panel.add_component(self._sessions_status_card)
 
+        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+        site_hdr = FlowPanel(spacing_above='none', spacing_below='small')
+        site_hdr.add_component(Label(text='Site Status', bold=True, role='body', font_size=16))
+        self._regen_btn = Button(text='Regenerate Site', role='tonal-button')
+        self._regen_btn.set_event_handler('click', self._regenerate_site_clicked)
+        site_hdr.add_component(self._regen_btn)
+        self._sessions_panel.add_component(site_hdr)
+        self._regen_feedback = Label(text='', role='body', font_size=14)
+        self._sessions_panel.add_component(self._regen_feedback)
+        self._site_status_card = ColumnPanel(role='outlined-card')
+        self._sessions_panel.add_component(self._site_status_card)
+
+        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
         self._sessions_panel.add_component(
             Label(text='Recent Session Artifacts', bold=True, role='body', font_size=16)
         )
@@ -574,6 +587,32 @@ class Form1(Form1Template):
         except Exception as e:
             self._sessions_status_card.add_component(
                 Label(text=f'Status unavailable: {e}', role='body', font_size=16)
+            )
+
+        # Site status
+        self._site_status_card.clear()
+        try:
+            with anvil.server.no_loading_indicator:
+                site = anvil.server.call('get_site_status')
+            generated = (site.get('generated_at') or '')[:16].replace('T', ' ')
+            agents = site.get('agent_count', '?')
+            mode = site.get('mode') or '?'
+            directive = (site.get('current_directive') or '').strip()[:80]
+            self._site_status_card.add_component(
+                Label(text=f'mode: {mode}  |  agents: {agents}  |  as of: {generated} UTC', role='body', font_size=14)
+            )
+            if directive:
+                self._site_status_card.add_component(
+                    Label(text=f'Directive: {directive}', role='body', font_size=13)
+                )
+            for s in site.get('last_sessions', []):
+                line = f"{s.get('date','')}  {s.get('descriptor','')}  —  {s.get('outcome','')}"
+                self._site_status_card.add_component(
+                    Label(text=line[:120], role='body', font_size=13)
+                )
+        except Exception as e:
+            self._site_status_card.add_component(
+                Label(text=f'Site status unavailable: {e}', role='body', font_size=14)
             )
 
         # Artifact history
@@ -1262,6 +1301,24 @@ class Form1(Form1Template):
             self._directive_input.text = ''
         except Exception as e:
             self._directive_feedback.text = f'\u274c Error: {e}'
+
+    def _regenerate_site_clicked(self, **event_args):
+        self._regen_feedback.text = 'Regenerating...'
+        self._regen_btn.enabled = False
+        try:
+            result = anvil.server.call('update_site')
+            ts = (result.get('generated_at') or '')[:16].replace('T', ' ')
+            self._regen_feedback.text = f'✅ Site updated at {ts} UTC'
+            self._site_status_card.clear()
+            with anvil.server.no_loading_indicator:
+                site = anvil.server.call('get_site_status')
+            generated = (site.get('generated_at') or '')[:16].replace('T', ' ')
+            self._site_status_card.add_component(
+                Label(text=f"mode: {site.get('mode','?')}  |  agents: {site.get('agent_count','?')}  |  as of: {generated} UTC", role='body', font_size=14)
+            )
+        except Exception as e:
+            self._regen_feedback.text = f'❌ Error: {e}'
+        self._regen_btn.enabled = True
 
     def _refresh_clicked(self, **event_args):
         self.refresh_data()
