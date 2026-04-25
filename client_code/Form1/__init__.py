@@ -585,6 +585,13 @@ class Form1(Form1Template):
         hdr.add_component(ref_btn)
         self._sessions_panel.add_component(hdr)
 
+        # Boot Briefings section
+        self._briefings_lbl = Label(text='Boot Briefings', bold=True, role='body', font_size=16)
+        self._sessions_panel.add_component(self._briefings_lbl)
+        self._briefings_body = ColumnPanel()
+        self._sessions_panel.add_component(self._briefings_body)
+        self._sessions_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+
         self._sessions_status_card = ColumnPanel(role='outlined-card')
         self._sessions_panel.add_component(self._sessions_status_card)
 
@@ -608,6 +615,21 @@ class Form1(Form1Template):
         self._sessions_panel.add_component(self._sessions_artifacts_body)
 
     def _load_sessions(self):
+        # Boot briefings
+        self._briefings_body.clear()
+        try:
+            with anvil.server.no_loading_indicator:
+                briefings = anvil.server.call('get_boot_briefings', 5)
+            unacked = [b for b in briefings if not b.get('acknowledged')]
+            self._briefings_lbl.text = f'Boot Briefings ({len(unacked)} unread)' if unacked else 'Boot Briefings'
+            if not briefings:
+                self._briefings_body.add_component(Label(text='No briefings yet.', role='body', font_size=14))
+            else:
+                for b in briefings:
+                    self._briefings_body.add_component(self._build_briefing_card(b))
+        except Exception as e:
+            self._briefings_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=13))
+
         # Live status
         self._sessions_status_card.clear()
         try:
@@ -690,6 +712,54 @@ class Form1(Form1Template):
             self._sessions_artifacts_body.add_component(
                 Label(text=f'Error loading artifacts: {e}', role='body', font_size=16)
             )
+
+    def _build_briefing_card(self, briefing):
+        briefing_id = briefing.get('id')
+        created = (briefing.get('created_at') or '')[:16].replace('T', ' ')
+        directive = briefing.get('directive_seen') or '—'
+        content = briefing.get('content') or ''
+        acked = briefing.get('acknowledged', False)
+
+        card = ColumnPanel(role='outlined-card')
+        meta = f'{'✅ ' if acked else '🔔 '}{created}  |  directive: {directive}'
+        card.add_component(Label(text=meta, bold=True, role='body', font_size=14))
+
+        expand_btn = Button(text='+', role='text-button')
+        hdr = FlowPanel(spacing_above='none', spacing_below='none')
+        hdr.add_component(expand_btn)
+        card.add_component(hdr)
+
+        detail = ColumnPanel()
+        detail.visible = False
+        detail.add_component(Label(text=content, role='body', font_size=13))
+
+        if not acked:
+            ack_fb = Label(text='', role='body', font_size=13)
+            ack_btn = Button(text='Acknowledge', role='tonal-button')
+            def _make_ack(bid, btn, fb, c):
+                def _h(**kw):
+                    try:
+                        anvil.server.call('acknowledge_boot_briefing', bid)
+                        fb.text = '✅ Acknowledged'
+                        btn.enabled = False
+                        c.role = None
+                    except Exception as ex:
+                        fb.text = f'❌ {ex}'
+                return _h
+            ack_btn.set_event_handler('click', _make_ack(briefing_id, ack_btn, ack_fb, card))
+            detail.add_component(ack_btn)
+            detail.add_component(ack_fb)
+
+        card.add_component(detail)
+
+        def _make_expand(det, btn):
+            def _e(**kw):
+                det.visible = not det.visible
+                btn.text = '−' if det.visible else '+'
+            return _e
+
+        expand_btn.set_event_handler('click', _make_expand(detail, expand_btn))
+        return card
 
     def _build_artifact_card(self, artifact):
         title = artifact.get('title') or artifact.get('filename', '(unknown)')
