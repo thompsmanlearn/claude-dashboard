@@ -458,12 +458,47 @@ class Form1(Form1Template):
             if not tasks:
                 self._queue_body.add_component(Label(text='Queue is empty', role='body', font_size=16))
                 return
-            for t in tasks[:15]:
-                self._queue_body.add_component(
-                    Label(text=f"[{t['status']}] {t['task_type']} (p:{t.get('priority', '?')})", role='body', font_size=16)
-                )
+            for t in tasks[:20]:
+                self._queue_body.add_component(self._build_queue_card(t))
         except Exception as e:
             self._queue_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
+
+    def _build_queue_card(self, task):
+        status = task.get('status', '?')
+        task_type = task.get('task_type', '?')
+        priority = task.get('priority', '?')
+        created_at = (task.get('created_at') or '')[:16].replace('T', ' ')
+        created_by = task.get('created_by') or '\u2014'
+        assigned = task.get('assigned_agent') or '\u2014'
+        input_data = task.get('input_data') or {}
+
+        _status_icons = {'pending': '\u23f3', 'claimed': '\u26a1', 'failed': '\u274c'}
+        icon = _status_icons.get(status, '\u25aa')
+
+        card = ColumnPanel(role='outlined-card')
+        compact = FlowPanel(spacing_above='none', spacing_below='none')
+        compact.add_component(Label(text=f'{icon} {task_type}  (p:{priority})', role='body', font_size=16))
+        expand_btn = Button(text='+', role='text-button')
+        compact.add_component(expand_btn)
+        card.add_component(compact)
+
+        detail = ColumnPanel()
+        detail.visible = False
+        meta = f'status: {status}  |  by: {created_by}  |  agent: {assigned}  |  {created_at}'
+        detail.add_component(Label(text=meta, role='body', font_size=13))
+        if input_data:
+            preview = str(input_data)[:300]
+            detail.add_component(Label(text=preview, role='body', font_size=12))
+        card.add_component(detail)
+
+        def _toggle(det, btn):
+            def _h(**kw):
+                det.visible = not det.visible
+                btn.text = '\u2212' if det.visible else '+'
+            return _h
+
+        expand_btn.set_event_handler('click', _toggle(detail, expand_btn))
+        return card
 
     def _load_inbox(self):
         self._inbox_body.clear()
