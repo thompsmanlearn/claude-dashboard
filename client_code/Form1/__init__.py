@@ -362,6 +362,7 @@ class Form1(Form1Template):
         schedule = agent.get('schedule') or '\u2014'
         protected = agent.get('protected', False)
         updated_at = (agent.get('updated_at') or '')[:10]
+        webhook_url = agent.get('webhook_url')
         icon = _STATUS_ICONS.get(status, '\u2753')
         prot_mark = '  \u26a0\ufe0f' if protected else ''
 
@@ -430,6 +431,27 @@ class Form1(Form1Template):
         action_row.add_component(thumb_down)
         action_row.add_component(comment_box)
         detail.add_component(action_row)
+
+        if webhook_url and status == 'active':
+            run_row = FlowPanel(spacing_above='none', spacing_below='none')
+            run_btn = Button(text='▶ Run', role='tonal-button')
+            run_fb = Label(text='', role='body', font_size=14)
+            def _make_invoke(a_name, btn, lbl):
+                def _h(**kw):
+                    btn.enabled = False
+                    lbl.text = 'Triggering…'
+                    try:
+                        anvil.server.call('invoke_agent', a_name)
+                        lbl.text = '✅ Triggered'
+                    except Exception as ex:
+                        lbl.text = f'❌ {ex}'
+                        btn.enabled = True
+                return _h
+            run_btn.set_event_handler('click', _make_invoke(agent_name, run_btn, run_fb))
+            run_row.add_component(run_btn)
+            run_row.add_component(run_fb)
+            detail.add_component(run_row)
+
         detail.add_component(fb_label)
 
         def _make_expand(det, btn):
