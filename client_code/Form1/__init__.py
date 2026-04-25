@@ -721,7 +721,8 @@ class Form1(Form1Template):
         acked = briefing.get('acknowledged', False)
 
         card = ColumnPanel(role='outlined-card')
-        meta = f'{'✅ ' if acked else '🔔 '}{created}  |  directive: {directive}'
+        icon = '✅ ' if acked else '🔔 '
+        meta = f'{icon}{created}  |  directive: {directive}'
         card.add_component(Label(text=meta, bold=True, role='body', font_size=14))
 
         expand_btn = Button(text='+', role='text-button')
