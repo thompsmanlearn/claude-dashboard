@@ -1000,12 +1000,31 @@ class Form1(Form1Template):
                     meta = f'score: {score}  |  status: {status}  |  {date}'
                     card.add_component(Label(text=meta, role='body', font_size=12))
                 elif table == 'error_logs':
+                    error_id = row.get('id')
                     wf = row.get('workflow_name') or '(unknown)'
                     msg = (row.get('error_message') or '')[:120]
                     date = (row.get('timestamp') or '')[:16].replace('T', ' ')
                     card.add_component(Label(text=wf, bold=True, role='body', font_size=14))
                     card.add_component(Label(text=msg, role='body', font_size=13))
                     card.add_component(Label(text=date, role='body', font_size=12))
+                    notes_box = TextBox(placeholder='Resolution notes…', width=200)
+                    card.add_component(notes_box)
+                    resolve_fb = Label(text='', role='body', font_size=12)
+                    resolve_btn = Button(text='Resolve', role='tonal-button')
+                    def _make_resolve(eid, nb, fb, btn, c):
+                        def _h(**kw):
+                            try:
+                                anvil.server.call('resolve_error_log', eid, nb.text or None)
+                                fb.text = '✅ Resolved'
+                                btn.enabled = False
+                                nb.enabled = False
+                                c.role = None
+                            except Exception as ex:
+                                fb.text = f'❌ {ex}'
+                        return _h
+                    resolve_btn.set_event_handler('click', _make_resolve(error_id, notes_box, resolve_fb, resolve_btn, card))
+                    card.add_component(resolve_btn)
+                    card.add_component(resolve_fb)
                 self._mem_supabase_body.add_component(card)
         except Exception as e:
             self._mem_supabase_body.clear()
