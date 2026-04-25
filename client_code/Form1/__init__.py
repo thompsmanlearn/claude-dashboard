@@ -1153,21 +1153,24 @@ class Form1(Form1Template):
                     if full.get('bill_comment'):
                         det.add_component(Label(text=f'Comment: {full["bill_comment"]}', role='body', font_size=13))
                     # Rating row
+                    comment_box = TextBox(placeholder='Comment\u2026', width=200)
+                    det.add_component(comment_box)
                     rate_row = FlowPanel(spacing_above='none', spacing_below='none')
                     up = Button(text='\U0001f44d', role='outlined-button')
                     dn = Button(text='\U0001f44e', role='outlined-button')
-                    def _make_rate(aid2, r, lbl):
+                    def _make_rate(aid2, r, lbl, cbox):
                         def _h2(**kw):
                             try:
-                                anvil.server.call('rate_artifact', aid2, r)
+                                anvil.server.call('rate_artifact', aid2, r, cbox.text or None)
                                 lbl.text = '\u2705 Rated'
                                 up.enabled = False
                                 dn.enabled = False
+                                cbox.enabled = False
                             except Exception as ex:
                                 lbl.text = f'\u274c {ex}'
                         return _h2
-                    up.set_event_handler('click', _make_rate(aid, 1, fb_label))
-                    dn.set_event_handler('click', _make_rate(aid, -1, fb_label))
+                    up.set_event_handler('click', _make_rate(aid, 1, fb_label, comment_box))
+                    dn.set_event_handler('click', _make_rate(aid, -1, fb_label, comment_box))
                     rate_row.add_component(up)
                     rate_row.add_component(dn)
                     det.add_component(rate_row)
