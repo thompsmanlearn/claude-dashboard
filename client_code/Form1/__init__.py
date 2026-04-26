@@ -1253,6 +1253,16 @@ class Form1(Form1Template):
 
         self._research_panel.add_component(fb_row)
 
+        self._research_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+        fb_hist_hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        fb_hist_hdr.add_component(Label(text='Feedback History', bold=True, role='body', font_size=16))
+        fb_hist_refresh = Button(text='↻', role='text-button')
+        fb_hist_refresh.set_event_handler('click', lambda **kw: self._load_feedback_threads())
+        fb_hist_hdr.add_component(fb_hist_refresh)
+        self._research_panel.add_component(fb_hist_hdr)
+        self._feedback_threads_body = ColumnPanel()
+        self._research_panel.add_component(self._feedback_threads_body)
+
     def _load_research_tab(self):
         self._research_status_lbl.text = 'Loading…'
         try:
@@ -1287,6 +1297,7 @@ class Form1(Form1Template):
             self._research_articles_body.add_component(
                 Label(text=f'Error: {e}', role='body', font_size=16)
             )
+        self._load_feedback_threads()
 
     def _render_research_articles(self, articles):
         self._research_articles_body.clear()
@@ -1428,6 +1439,71 @@ class Form1(Form1Template):
 
         card.add_component(action_row)
         card.add_component(fb_label)
+        return card
+
+    def _load_feedback_threads(self):
+        self._feedback_threads_body.clear()
+        try:
+            with anvil.server.no_loading_indicator:
+                data = anvil.server.call('get_feedback_threads')
+        except Exception as e:
+            self._feedback_threads_body.add_component(
+                Label(text=f'Error: {e}', role='body', font_size=14)
+            )
+            return
+
+        pending = data.get('pending') or []
+        resolved = data.get('resolved') or []
+
+        if not pending and not resolved:
+            self._feedback_threads_body.add_component(
+                Label(text='No feedback yet.', role='body', font_size=14)
+            )
+            return
+
+        if pending:
+            self._feedback_threads_body.add_component(
+                Label(text=f'Pending ({len(pending)})', bold=True, role='body', font_size=15)
+            )
+            for item in pending:
+                self._feedback_threads_body.add_component(self._build_feedback_thread_card(item))
+
+        if resolved:
+            self._feedback_threads_body.add_component(
+                Label(text=f'Recently Resolved ({len(resolved)})', bold=True, role='body', font_size=15)
+            )
+            for item in resolved:
+                self._feedback_threads_body.add_component(self._build_feedback_thread_card(item))
+
+    def _build_feedback_thread_card(self, item):
+        target_type = item.get('target_type') or ''
+        target_id = item.get('target_id') or ''
+        content = item.get('content') or ''
+        created_at = (item.get('created_at') or '')[:16].replace('T', ' ')
+        action_summary = item.get('action_summary')
+        action_session = item.get('action_session')
+        action_result_url = item.get('action_result_url')
+
+        card = ColumnPanel(role='outlined-card')
+        card.add_component(Label(
+            text=f'{target_type}: {target_id}  |  {created_at}',
+            role='body', font_size=13,
+        ))
+        card.add_component(Label(text=content, role='body', font_size=14))
+
+        if action_summary is not None:
+            is_deferred = action_summary.startswith('Deferred:')
+            icon = '⏸ ' if is_deferred else '✅ '
+            resp_size = 13 if is_deferred else 14
+            card.add_component(Label(text=icon + action_summary, role='body', font_size=resp_size))
+            if action_session:
+                card.add_component(Label(
+                    text=f'Session: {action_session}',
+                    role='body', font_size=12,
+                ))
+            if action_result_url:
+                card.add_component(Link(text='View result →', url=action_result_url))
+
         return card
 
     def _research_run_clicked(self, **event_args):
