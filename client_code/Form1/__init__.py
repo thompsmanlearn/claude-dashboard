@@ -37,6 +37,8 @@ class Form1(Form1Template):
         self._artifacts_loaded = False
         self._artifacts_agent_filter = None
         self._artifacts_type_filter = None
+        self._research_loaded = False
+        self._research_articles = []
         self._build_layout()
         self.refresh_data()
 
@@ -76,18 +78,21 @@ class Form1(Form1Template):
         self._sessions_tab_btn = Button(text='Sessions', role='tonal-button')
         self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
         self._memory_tab_btn = Button(text='Memory', role='tonal-button')
+        self._research_tab_btn = Button(text='Research', role='tonal-button')
         self._skills_tab_btn = Button(text='Skills', role='tonal-button')
         self._artifacts_tab_btn = Button(text='Artifacts', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
         self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
         self._memory_tab_btn.set_event_handler('click', self._show_memory_tab)
+        self._research_tab_btn.set_event_handler('click', self._show_research_tab)
         self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
         self._artifacts_tab_btn.set_event_handler('click', self._show_artifacts_tab)
         tab_row.add_component(self._fleet_tab_btn)
         tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._lessons_tab_btn)
         tab_row.add_component(self._memory_tab_btn)
+        tab_row.add_component(self._research_tab_btn)
         tab_row.add_component(self._skills_tab_btn)
         tab_row.add_component(self._artifacts_tab_btn)
         self.content_panel.add_component(tab_row)
@@ -136,6 +141,12 @@ class Form1(Form1Template):
         self._artifacts_panel.visible = False
         self._build_artifacts_layout()
         self.content_panel.add_component(self._artifacts_panel)
+
+        # Research panel (hidden by default)
+        self._research_panel = ColumnPanel()
+        self._research_panel.visible = False
+        self._build_research_layout()
+        self.content_panel.add_component(self._research_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -229,6 +240,7 @@ class Form1(Form1Template):
             'sessions': self._sessions_panel,
             'lessons': self._lessons_panel,
             'memory': self._memory_panel,
+            'research': self._research_panel,
             'skills': self._skills_panel,
             'artifacts': self._artifacts_panel,
         }
@@ -237,6 +249,7 @@ class Form1(Form1Template):
             'sessions': self._sessions_tab_btn,
             'lessons': self._lessons_tab_btn,
             'memory': self._memory_tab_btn,
+            'research': self._research_tab_btn,
             'skills': self._skills_tab_btn,
             'artifacts': self._artifacts_tab_btn,
         }
@@ -275,6 +288,12 @@ class Form1(Form1Template):
         if not self._artifacts_loaded:
             self._load_artifacts()
             self._artifacts_loaded = True
+
+    def _show_research_tab(self, **event_args):
+        self._set_tab('research')
+        if not self._research_loaded:
+            self._load_research_tab()
+            self._research_loaded = True
 
     def refresh_data(self):
         self._load_status()
@@ -1157,6 +1176,294 @@ class Form1(Form1Template):
         except Exception as e:
             self._mem_supabase_body.clear()
             self._mem_supabase_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    # ── Research tab ─────────────────────────────────────────────────────────
+
+    def _build_research_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Research', role='title', bold=True, font_size=20))
+        self._research_run_btn = Button(text='▶ Run research', role='tonal-button')
+        self._research_run_btn.set_event_handler('click', self._research_run_clicked)
+        hdr.add_component(self._research_run_btn)
+        self._research_panel.add_component(hdr)
+
+        self._research_run_fb = Label(text='', role='body', font_size=14)
+        self._research_panel.add_component(self._research_run_fb)
+
+        self._research_status_lbl = Label(text='', role='body', font_size=14)
+        self._research_panel.add_component(self._research_status_lbl)
+
+        self._research_articles_body = ColumnPanel()
+        self._research_panel.add_component(self._research_articles_body)
+
+        self._research_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+
+        fb_row = FlowPanel(spacing_above='small', spacing_below='small')
+
+        agent_fb_col = ColumnPanel()
+        agent_fb_col.add_component(Label(text='Feedback for the agent', bold=True, role='body', font_size=15))
+        self._research_agent_fb_box = TextArea(
+            placeholder='What should the agent research differently?',
+            role='outlined',
+            height=60,
+        )
+        agent_fb_col.add_component(self._research_agent_fb_box)
+        agent_submit = Button(text='Submit', role='tonal-button')
+        self._research_agent_fb_status = Label(text='', role='body', font_size=13)
+        agent_submit.set_event_handler(
+            'click',
+            lambda **kw: self._submit_research_feedback(
+                'agent', 'context_engineering_research',
+                self._research_agent_fb_box, self._research_agent_fb_status,
+            ),
+        )
+        agent_fb_col.add_component(agent_submit)
+        agent_fb_col.add_component(self._research_agent_fb_status)
+        fb_row.add_component(agent_fb_col)
+
+        ui_fb_col = ColumnPanel()
+        ui_fb_col.add_component(Label(text='Feedback for this UI', bold=True, role='body', font_size=15))
+        self._research_ui_fb_box = TextArea(
+            placeholder='What should this view show differently?',
+            role='outlined',
+            height=60,
+        )
+        ui_fb_col.add_component(self._research_ui_fb_box)
+        ui_submit = Button(text='Submit', role='tonal-button')
+        self._research_ui_fb_status = Label(text='', role='body', font_size=13)
+        ui_submit.set_event_handler(
+            'click',
+            lambda **kw: self._submit_research_feedback(
+                'anvil_view', 'research_tab',
+                self._research_ui_fb_box, self._research_ui_fb_status,
+            ),
+        )
+        ui_fb_col.add_component(ui_submit)
+        ui_fb_col.add_component(self._research_ui_fb_status)
+        fb_row.add_component(ui_fb_col)
+
+        self._research_panel.add_component(fb_row)
+
+    def _load_research_tab(self):
+        self._research_status_lbl.text = 'Loading…'
+        try:
+            with anvil.server.no_loading_indicator:
+                summary = anvil.server.call('get_research_run_summary')
+            if summary.get('retrieved_at'):
+                ts = (summary['retrieved_at'] or '')[:16].replace('T', ' ')
+                self._research_status_lbl.text = (
+                    f"Last run: {ts} UTC — {summary['count']} article(s)"
+                )
+            else:
+                self._research_status_lbl.text = 'No runs yet'
+        except Exception as e:
+            self._research_status_lbl.text = f'Status unavailable: {e}'
+
+        self._research_articles_body.clear()
+        self._research_articles_body.add_component(
+            Label(text='Loading articles…', role='body', font_size=16)
+        )
+        try:
+            with anvil.server.no_loading_indicator:
+                articles = anvil.server.call('get_research_articles', 50)
+            self._research_articles = articles
+            self._render_research_articles(articles)
+        except Exception as e:
+            self._research_articles_body.clear()
+            self._research_articles_body.add_component(
+                Label(text=f'Error: {e}', role='body', font_size=16)
+            )
+
+    def _render_research_articles(self, articles):
+        self._research_articles_body.clear()
+        if not articles:
+            self._research_articles_body.add_component(
+                Label(text='No articles yet. Press "▶ Run research" to fetch some.', role='body', font_size=16)
+            )
+            return
+
+        runs = {}
+        run_order = []
+        for a in articles:
+            run_id = a.get('agent_run_id') or 'unknown'
+            if run_id not in runs:
+                runs[run_id] = []
+                run_order.append(run_id)
+            runs[run_id].append(a)
+
+        for i, run_id in enumerate(run_order):
+            run_articles = runs[run_id]
+            run_ts = (run_articles[0].get('retrieved_at') or '')[:16].replace('T', ' ')
+
+            run_outer = ColumnPanel(role='outlined-card')
+            run_hdr = FlowPanel(spacing_above='small', spacing_below='none')
+            run_hdr.add_component(
+                Label(
+                    text=f'Run {run_ts} UTC — {len(run_articles)} article(s)',
+                    bold=True, role='body', font_size=15,
+                )
+            )
+            run_toggle_btn = Button(text=_EXPAND if i == 0 else _COLLAPSE, role='text-button')
+            run_hdr.add_component(run_toggle_btn)
+            run_outer.add_component(run_hdr)
+
+            run_body = ColumnPanel()
+            run_body.visible = (i == 0)
+            run_outer.add_component(run_body)
+
+            def _make_run_toggle(body, btn):
+                def _t(**kw):
+                    body.visible = not body.visible
+                    btn.text = _EXPAND if body.visible else _COLLAPSE
+                return _t
+
+            run_toggle_btn.set_event_handler('click', _make_run_toggle(run_body, run_toggle_btn))
+
+            for article in run_articles:
+                run_body.add_component(self._build_research_article_card(article))
+
+            self._research_articles_body.add_component(run_outer)
+
+    def _build_research_article_card(self, article):
+        article_id = article.get('id')
+        title = (article.get('title') or '(no title)')[:120]
+        url = article.get('url') or ''
+        source = article.get('source') or ''
+        query_used = article.get('query_used') or ''
+        summary = (article.get('summary') or '')
+        current_rating = article.get('rating') or 0
+        current_comment = article.get('comment') or ''
+        current_status = article.get('status') or 'new'
+
+        card = ColumnPanel(role='outlined-card')
+
+        title_link = Link(text=title, url=url, target='_blank')
+        card.add_component(title_link)
+
+        meta_row = FlowPanel(spacing_above='none', spacing_below='none')
+        if source:
+            meta_row.add_component(Label(text=source, role='body', font_size=13))
+        if query_used:
+            meta_row.add_component(Label(text=f'[{query_used[:60]}]', role='body', font_size=12))
+        card.add_component(meta_row)
+
+        if summary:
+            card.add_component(Label(text=summary[:300], role='body', font_size=14))
+
+        action_row = FlowPanel(spacing_above='none', spacing_below='none')
+        fb_label = Label(text='', role='body', font_size=13)
+
+        rating_state = [current_rating]
+        up_btn = Button(
+            text='\U0001f44d' + (' ✓' if current_rating == 1 else ''),
+            role='outlined-button',
+        )
+        down_btn = Button(
+            text='\U0001f44e' + (' ✓' if current_rating == -1 else ''),
+            role='outlined-button',
+        )
+
+        def _make_rate(aid, new_r, up, down, state, lbl):
+            def _h(**kw):
+                actual = 0 if state[0] == new_r else new_r
+                try:
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('rate_research_article', aid, actual)
+                    state[0] = actual
+                    up.text = '\U0001f44d' + (' ✓' if state[0] == 1 else '')
+                    down.text = '\U0001f44e' + (' ✓' if state[0] == -1 else '')
+                    lbl.text = ''
+                except Exception as ex:
+                    lbl.text = f'❌ {ex}'
+            return _h
+
+        up_btn.set_event_handler('click', _make_rate(article_id, 1, up_btn, down_btn, rating_state, fb_label))
+        down_btn.set_event_handler('click', _make_rate(article_id, -1, up_btn, down_btn, rating_state, fb_label))
+        action_row.add_component(up_btn)
+        action_row.add_component(down_btn)
+
+        comment_box = TextBox(placeholder='Comment', text=current_comment, width=200)
+
+        def _make_save_comment(aid, cbox, lbl):
+            def _h(**kw):
+                try:
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('comment_research_article', aid, cbox.text or '')
+                    lbl.text = '✅'
+                except Exception as ex:
+                    lbl.text = f'❌ {ex}'
+            return _h
+
+        comment_box.set_event_handler('lost_focus', _make_save_comment(article_id, comment_box, fb_label))
+        action_row.add_component(comment_box)
+
+        status_dd = DropDown(items=['new', 'reviewed', 'archived'], selected_value=current_status)
+
+        def _make_status(aid, dd, lbl):
+            def _h(**kw):
+                try:
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('set_research_article_status', aid, dd.selected_value)
+                    lbl.text = f'✅ {dd.selected_value}'
+                except Exception as ex:
+                    lbl.text = f'❌ {ex}'
+            return _h
+
+        status_dd.set_event_handler('change', _make_status(article_id, status_dd, fb_label))
+        action_row.add_component(status_dd)
+
+        card.add_component(action_row)
+        card.add_component(fb_label)
+        return card
+
+    def _research_run_clicked(self, **event_args):
+        import time
+        self._research_run_btn.enabled = False
+        self._research_run_fb.text = 'Triggering…'
+        try:
+            with anvil.server.no_loading_indicator:
+                anvil.server.call('invoke_agent', 'context_engineering_research')
+            self._research_run_fb.text = '✅ Triggered — articles arriving'
+            prev_count = len(self._research_articles)
+            found = False
+            for _ in range(12):
+                time.sleep(5)
+                with anvil.server.no_loading_indicator:
+                    articles = anvil.server.call('get_research_articles', 50)
+                if len(articles) > prev_count:
+                    self._research_articles = articles
+                    self._render_research_articles(articles)
+                    self._research_run_fb.text = '✅ New articles loaded'
+                    with anvil.server.no_loading_indicator:
+                        summary = anvil.server.call('get_research_run_summary')
+                    if summary.get('retrieved_at'):
+                        ts = (summary['retrieved_at'] or '')[:16].replace('T', ' ')
+                        self._research_status_lbl.text = (
+                            f"Last run: {ts} UTC — {summary['count']} article(s)"
+                        )
+                    found = True
+                    break
+            if not found:
+                self._research_run_fb.text = 'No new articles yet — refresh manually'
+        except Exception as e:
+            self._research_run_fb.text = f'❌ {e}'
+        self._research_run_btn.enabled = True
+
+    def _submit_research_feedback(self, target_type, target_id, textbox, status_lbl):
+        import time
+        content = (textbox.text or '').strip()
+        if not content:
+            status_lbl.text = '⚠️ Empty'
+            return
+        try:
+            with anvil.server.no_loading_indicator:
+                anvil.server.call('submit_agent_feedback_v2', target_type, target_id, content)
+            textbox.text = ''
+            status_lbl.text = '✅ Saved'
+            time.sleep(3)
+            status_lbl.text = ''
+        except Exception as ex:
+            status_lbl.text = f'❌ {ex}'
 
     # ── Artifacts tab ────────────────────────────────────────────────────────
 
