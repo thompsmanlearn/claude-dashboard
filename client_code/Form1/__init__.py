@@ -1185,10 +1185,19 @@ class Form1(Form1Template):
         self._research_run_btn = Button(text='▶ Run research', role='tonal-button')
         self._research_run_btn.set_event_handler('click', self._research_run_clicked)
         hdr.add_component(self._research_run_btn)
+        self._research_export_btn = Button(text='⬇ Export', role='tonal-button')
+        self._research_export_btn.set_event_handler('click', self._research_export_clicked)
+        hdr.add_component(self._research_export_btn)
         self._research_panel.add_component(hdr)
 
         self._research_run_fb = Label(text='', role='body', font_size=14)
         self._research_panel.add_component(self._research_run_fb)
+
+        self._research_export_fb = Label(text='', role='body', font_size=14)
+        self._research_panel.add_component(self._research_export_fb)
+        self._research_export_panel = ColumnPanel()
+        self._research_export_panel.visible = False
+        self._research_panel.add_component(self._research_export_panel)
 
         self._research_status_lbl = Label(text='', role='body', font_size=14)
         self._research_panel.add_component(self._research_status_lbl)
@@ -1448,6 +1457,34 @@ class Form1(Form1Template):
         except Exception as e:
             self._research_run_fb.text = f'❌ {e}'
         self._research_run_btn.enabled = True
+
+    def _research_export_clicked(self, **event_args):
+        self._research_export_fb.text = 'Exporting…'
+        self._research_export_panel.visible = False
+        try:
+            with anvil.server.no_loading_indicator:
+                bundle = anvil.server.call('get_research_bundle')
+        except Exception as e:
+            self._research_export_fb.text = f'❌ {e}'
+            return
+
+        # Try clipboard; fall back to TextArea
+        copied = False
+        try:
+            anvil.js.window.navigator.clipboard.writeText(bundle)
+            copied = True
+        except Exception:
+            pass
+
+        if copied:
+            self._research_export_fb.text = '✅ Copied'
+        else:
+            self._research_export_fb.text = '📋 Ready to copy below'
+            self._research_export_panel.clear()
+            self._research_export_panel.add_component(
+                TextArea(text=bundle, height=300, enabled=True)
+            )
+            self._research_export_panel.visible = True
 
     def _submit_research_feedback(self, target_type, target_id, textbox, status_lbl):
         import time
