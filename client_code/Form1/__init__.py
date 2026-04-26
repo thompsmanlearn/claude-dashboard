@@ -1337,7 +1337,7 @@ class Form1(Form1Template):
 
         card = ColumnPanel(role='outlined-card')
 
-        title_link = Link(text=title, url=url, target='_blank')
+        title_link = Link(text=title, url=url)
         card.add_component(title_link)
 
         meta_row = FlowPanel(spacing_above='none', spacing_below='none')
