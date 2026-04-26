@@ -1258,13 +1258,18 @@ class Form1(Form1Template):
         try:
             with anvil.server.no_loading_indicator:
                 summary = anvil.server.call('get_research_run_summary')
+                counters = anvil.server.call('get_research_counters')
+            total = counters.get('total', '?')
+            unreviewed = counters.get('unreviewed', '?')
+            last_24h = counters.get('last_24h', '?')
+            counter_str = f'{total} total · {unreviewed} unreviewed · {last_24h} new (24h)'
             if summary.get('retrieved_at'):
                 ts = (summary['retrieved_at'] or '')[:16].replace('T', ' ')
                 self._research_status_lbl.text = (
-                    f"Last run: {ts} UTC — {summary['count']} article(s)"
+                    f"Last run: {ts} UTC — {summary['count']} article(s)  |  {counter_str}"
                 )
             else:
-                self._research_status_lbl.text = 'No runs yet'
+                self._research_status_lbl.text = f'No runs yet  |  {counter_str}'
         except Exception as e:
             self._research_status_lbl.text = f'Status unavailable: {e}'
 
