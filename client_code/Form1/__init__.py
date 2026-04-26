@@ -99,6 +99,17 @@ class Form1(Form1Template):
 
         # Fleet panel (default visible)
         self._fleet_panel = ColumnPanel()
+        _fleet_hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        _fleet_hdr.add_component(Label(text='Fleet', role='title', bold=True, font_size=20))
+        self._fleet_export_btn = Button(text='⬇ Export', role='tonal-button')
+        self._fleet_export_btn.set_event_handler('click', self._fleet_export_clicked)
+        _fleet_hdr.add_component(self._fleet_export_btn)
+        self._fleet_panel.add_component(_fleet_hdr)
+        self._fleet_export_fb = Label(text='', role='body', font_size=14)
+        self._fleet_panel.add_component(self._fleet_export_fb)
+        self._fleet_export_panel = ColumnPanel()
+        self._fleet_export_panel.visible = False
+        self._fleet_panel.add_component(self._fleet_export_panel)
         sec, self._status_body, _ = self._make_section('System Status', default_open=True)
         self._fleet_panel.add_component(sec)
         sec, self._agents_body, self._agents_lbl = self._make_section('Agent Fleet')
@@ -602,7 +613,15 @@ class Form1(Form1Template):
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._load_sessions())
         hdr.add_component(ref_btn)
+        self._sessions_export_btn = Button(text='\u2b07 Export', role='tonal-button')
+        self._sessions_export_btn.set_event_handler('click', self._sessions_export_clicked)
+        hdr.add_component(self._sessions_export_btn)
         self._sessions_panel.add_component(hdr)
+        self._sessions_export_fb = Label(text='', role='body', font_size=14)
+        self._sessions_panel.add_component(self._sessions_export_fb)
+        self._sessions_export_panel = ColumnPanel()
+        self._sessions_export_panel.visible = False
+        self._sessions_panel.add_component(self._sessions_export_panel)
 
         # Boot Briefings section
         self._briefings_lbl = Label(text='Boot Briefings', bold=True, role='body', font_size=16)
@@ -814,6 +833,18 @@ class Form1(Form1Template):
     # ── Lessons tab ───────────────────────────────────────────────────────────
 
     def _build_lessons_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Lessons', role='title', bold=True, font_size=20))
+        self._lessons_export_btn = Button(text='⬇ Export', role='tonal-button')
+        self._lessons_export_btn.set_event_handler('click', self._lessons_export_clicked)
+        hdr.add_component(self._lessons_export_btn)
+        self._lessons_panel.add_component(hdr)
+        self._lessons_export_fb = Label(text='', role='body', font_size=14)
+        self._lessons_panel.add_component(self._lessons_export_fb)
+        self._lessons_export_panel = ColumnPanel()
+        self._lessons_export_panel.visible = False
+        self._lessons_panel.add_component(self._lessons_export_panel)
+
         view_row = FlowPanel(spacing_above='small', spacing_below='small')
         self._lesson_view_btns = {}
         for label, filt in [
@@ -938,7 +969,15 @@ class Form1(Form1Template):
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._refresh_memory())
         hdr.add_component(ref_btn)
+        self._memory_export_btn = Button(text='\u2b07 Export', role='tonal-button')
+        self._memory_export_btn.set_event_handler('click', self._memory_export_clicked)
+        hdr.add_component(self._memory_export_btn)
         self._memory_panel.add_component(hdr)
+        self._memory_export_fb = Label(text='', role='body', font_size=14)
+        self._memory_panel.add_component(self._memory_export_fb)
+        self._memory_export_panel = ColumnPanel()
+        self._memory_export_panel.visible = False
+        self._memory_panel.add_component(self._memory_export_panel)
 
         # ChromaDB section
         self._memory_panel.add_component(Label(text='ChromaDB', bold=True, role='body', font_size=18))
@@ -968,9 +1007,17 @@ class Form1(Form1Template):
         el_btn = Button(text='Error Log', role='tonal-button')
         rp_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('research_papers'))
         el_btn.set_event_handler('click', lambda **kw: self._load_supabase_table('error_logs'))
+        self._errors_export_btn = Button(text='⬇ Export Errors', role='tonal-button')
+        self._errors_export_btn.set_event_handler('click', self._errors_export_clicked)
         sb_row.add_component(rp_btn)
         sb_row.add_component(el_btn)
+        sb_row.add_component(self._errors_export_btn)
         self._memory_panel.add_component(sb_row)
+        self._errors_export_fb = Label(text='', role='body', font_size=14)
+        self._memory_panel.add_component(self._errors_export_fb)
+        self._errors_export_panel = ColumnPanel()
+        self._errors_export_panel.visible = False
+        self._memory_panel.add_component(self._errors_export_panel)
 
         self._mem_supabase_body = ColumnPanel()
         self._memory_panel.add_component(self._mem_supabase_body)
@@ -1591,7 +1638,15 @@ class Form1(Form1Template):
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._reload_artifacts())
         hdr.add_component(ref_btn)
+        self._artifacts_export_btn = Button(text='\u2b07 Export', role='tonal-button')
+        self._artifacts_export_btn.set_event_handler('click', self._artifacts_export_clicked)
+        hdr.add_component(self._artifacts_export_btn)
         self._artifacts_panel.add_component(hdr)
+        self._artifacts_export_fb = Label(text='', role='body', font_size=14)
+        self._artifacts_panel.add_component(self._artifacts_export_fb)
+        self._artifacts_export_panel = ColumnPanel()
+        self._artifacts_export_panel.visible = False
+        self._artifacts_panel.add_component(self._artifacts_export_panel)
 
         self._artifacts_filter_row = FlowPanel(spacing_above='none', spacing_below='small')
         self._artifacts_panel.add_component(self._artifacts_filter_row)
@@ -1766,7 +1821,15 @@ class Form1(Form1Template):
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._reload_skills())
         hdr.add_component(ref_btn)
+        self._skills_export_btn = Button(text='\u2b07 Export', role='tonal-button')
+        self._skills_export_btn.set_event_handler('click', self._skills_export_clicked)
+        hdr.add_component(self._skills_export_btn)
         self._skills_panel.add_component(hdr)
+        self._skills_export_fb = Label(text='', role='body', font_size=14)
+        self._skills_panel.add_component(self._skills_export_fb)
+        self._skills_export_panel = ColumnPanel()
+        self._skills_export_panel.visible = False
+        self._skills_panel.add_component(self._skills_export_panel)
 
         self._skills_body = ColumnPanel()
         self._skills_panel.add_component(self._skills_body)
@@ -1853,6 +1916,53 @@ class Form1(Form1Template):
             )
 
     # ── Event handlers ────────────────────────────────────────────────────────
+
+    def _run_export(self, callable_name, fb_lbl, fallback_panel, **kwargs):
+        fb_lbl.text = 'Exporting…'
+        fallback_panel.visible = False
+        try:
+            with anvil.server.no_loading_indicator:
+                bundle = anvil.server.call(callable_name, **kwargs)
+        except Exception as e:
+            fb_lbl.text = f'❌ {e}'
+            return
+        copied = False
+        try:
+            anvil.js.window.navigator.clipboard.writeText(bundle)
+            copied = True
+        except Exception:
+            pass
+        if copied:
+            fb_lbl.text = '✅ Copied'
+        else:
+            fb_lbl.text = '📋 Ready to copy below'
+            fallback_panel.clear()
+            fallback_panel.add_component(TextArea(text=bundle, height=300, enabled=True))
+            fallback_panel.visible = True
+
+    def _fleet_export_clicked(self, **event_args):
+        self._run_export('get_fleet_bundle', self._fleet_export_fb, self._fleet_export_panel)
+
+    def _sessions_export_clicked(self, **event_args):
+        self._run_export('get_sessions_bundle', self._sessions_export_fb, self._sessions_export_panel)
+
+    def _lessons_export_clicked(self, **event_args):
+        self._run_export('get_lessons_bundle', self._lessons_export_fb, self._lessons_export_panel,
+                         filter=self._lessons_current_filter)
+
+    def _memory_export_clicked(self, **event_args):
+        self._run_export('get_memory_bundle', self._memory_export_fb, self._memory_export_panel,
+                         collection=self._memory_selected_coll)
+
+    def _errors_export_clicked(self, **event_args):
+        self._run_export('get_errors_bundle', self._errors_export_fb, self._errors_export_panel)
+
+    def _skills_export_clicked(self, **event_args):
+        self._run_export('get_skills_bundle', self._skills_export_fb, self._skills_export_panel)
+
+    def _artifacts_export_clicked(self, **event_args):
+        self._run_export('get_artifacts_bundle', self._artifacts_export_fb, self._artifacts_export_panel,
+                         agent_name=self._artifacts_agent_filter, artifact_type=self._artifacts_type_filter)
 
     def _trigger_lean_clicked(self, **event_args):
         self._lean_feedback.text = 'Starting...'
