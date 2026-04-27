@@ -974,7 +974,7 @@ class Form1(Form1Template):
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._refresh_memory())
         hdr.add_component(ref_btn)
-        self._memory_export_btn = Button(text='\u2b07 Export', role='tonal-button')
+        self._memory_export_btn = Button(text='\u2b07 Export All', role='tonal-button')
         self._memory_export_btn.set_event_handler('click', self._memory_export_clicked)
         hdr.add_component(self._memory_export_btn)
         self._memory_panel.add_component(hdr)
@@ -1030,6 +1030,7 @@ class Form1(Form1Template):
     def _refresh_memory(self):
         self._memory_loaded = False
         self._memory_selected_coll = None
+        self._memory_export_btn.text = '⬇ Export All'
         self._memory_offset = 0
         self._mem_search_row.visible = False
         self._mem_docs_body.clear()
@@ -1050,6 +1051,7 @@ class Form1(Form1Template):
                 def _make_select(name):
                     def _h(**kw):
                         self._memory_selected_coll = name
+                        self._memory_export_btn.text = f'⬇ Export {name}'
                         self._memory_offset = 0
                         self._mem_search_box.text = ''
                         self._mem_search_row.visible = True
