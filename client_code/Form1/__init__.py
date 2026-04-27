@@ -895,6 +895,11 @@ class Form1(Form1Template):
             else:
                 lessons = anvil.server.call('get_lessons', filter)
             self._lessons_body.clear()
+            if filter == 'never_applied':
+                self._lessons_body.add_component(Label(
+                    text='Lessons created 7+ days ago that have never been applied',
+                    role='body', font_size=13, italic=True,
+                ))
             if not lessons:
                 self._lessons_body.add_component(Label(text='No lessons found.', role='body', font_size=16))
                 return
