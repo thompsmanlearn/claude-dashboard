@@ -365,6 +365,19 @@ class Form1(Form1Template):
     # ── Threads tab ───────────────────────────────────────────────────────────
 
     def _build_threads_layout(self):
+        # Create-thread affordance
+        create_row = FlowPanel(spacing_above='small', spacing_below='none')
+        self._threads_title_input = TextBox(placeholder='Title', width=200)
+        self._threads_question_input = TextBox(placeholder='Question', width=300)
+        create_btn = Button(text='Create thread', role='tonal-button')
+        self._threads_create_fb = Label(text='', role='body', font_size=12)
+        create_row.add_component(self._threads_title_input)
+        create_row.add_component(self._threads_question_input)
+        create_row.add_component(create_btn)
+        create_row.add_component(self._threads_create_fb)
+        create_btn.set_event_handler('click', self._create_thread_clicked)
+        self._threads_panel.add_component(create_row)
+
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
         hdr.add_component(Label(text='Threads', role='title', bold=True, font_size=20))
         self._threads_state_dd = DropDown(
@@ -383,6 +396,25 @@ class Form1(Form1Template):
 
         self._threads_body = ColumnPanel()
         self._threads_panel.add_component(self._threads_body)
+
+    def _create_thread_clicked(self, **event_args):
+        title = (self._threads_title_input.text or '').strip()
+        question = (self._threads_question_input.text or '').strip()
+        if not title or not question:
+            self._threads_create_fb.text = '⚠️ Title and question required'
+            return
+        self._threads_create_fb.text = 'Creating…'
+        try:
+            with anvil.server.no_loading_indicator:
+                anvil.server.call('create_thread', title, question)
+            self._threads_title_input.text = ''
+            self._threads_question_input.text = ''
+            self._threads_create_fb.text = '✅ Thread created'
+            self._threads_state_filter = 'active'
+            self._threads_state_dd.selected_value = 'active'
+            self._load_threads()
+        except Exception as e:
+            self._threads_create_fb.text = f'❌ {e}'
 
     def _threads_filter_changed(self, **event_args):
         self._threads_state_filter = self._threads_state_dd.selected_value
@@ -420,12 +452,9 @@ class Form1(Form1Template):
 
     def _build_thread_card(self, t):
         thread_id = t.get('id', '')
+        t_state = [dict(t)]
         title = t.get('title') or '(untitled)'
         question = t.get('question') or ''
-        state = t.get('state') or 'active'
-        bound_agent = t.get('bound_agent')
-        last_activity = t.get('last_activity_at') or t.get('updated_at') or ''
-        created_at = t.get('created_at') or ''
 
         card = ColumnPanel(role='outlined-card')
 
@@ -435,38 +464,45 @@ class Form1(Form1Template):
         toggle_btn = Button(text=_COLLAPSE, role='text-button')
         title_row.add_component(toggle_btn)
         title_row.add_component(Label(text=title, bold=True, role='body', font_size=16))
-        badge_text = _STATE_BADGE.get(state, state)
-        title_row.add_component(Label(text=f'  {badge_text}', role='body', font_size=13))
+        badge_lbl = Label(text=f'  {_STATE_BADGE.get(t_state[0].get("state","active"), t_state[0].get("state","active"))}', role='body', font_size=13)
+        title_row.add_component(badge_lbl)
         hdr_panel.add_component(title_row)
 
         if question:
             q_preview = question[:80] + ('\u2026' if len(question) > 80 else '')
             hdr_panel.add_component(Label(text=q_preview, role='body', font_size=13))
 
-        agent_text = bound_agent if bound_agent else 'no agent wired'
-        meta = f'{agent_text}  \u00b7  last active {_rel_time(last_activity)}'
-        hdr_panel.add_component(Label(text=meta, role='body', font_size=12))
-
+        last_activity = t.get('last_activity_at') or t.get('updated_at') or ''
+        agent_text = t.get('bound_agent') or 'no agent wired'
+        meta_lbl = Label(text=f'{agent_text}  \u00b7  last active {_rel_time(last_activity)}', role='body', font_size=12)
+        hdr_panel.add_component(meta_lbl)
         card.add_component(hdr_panel)
 
-        # Entries panel (hidden until expanded)
+        # Content panel: entries + actions (hidden until expanded)
+        content_panel = ColumnPanel()
+        content_panel.visible = False
+
         entries_panel = ColumnPanel()
-        entries_panel.visible = False
-        card.add_component(entries_panel)
+        content_panel.add_component(entries_panel)
 
-        def _make_toggle(tid, ep, tb):
-            loaded = [False]
-            def _h(**kw):
-                if not loaded[0]:
-                    self._load_thread_entries(tid, ep)
-                    loaded[0] = True
-                    ep.visible = True
-                else:
-                    ep.visible = not ep.visible
-                tb.text = _EXPAND if ep.visible else _COLLAPSE
-            return _h
+        actions_panel = ColumnPanel()
+        content_panel.add_component(actions_panel)
 
-        toggle_btn.set_event_handler('click', _make_toggle(thread_id, entries_panel, toggle_btn))
+        card.add_component(content_panel)
+
+        loaded = [False]
+
+        def _toggle(**kw):
+            if not loaded[0]:
+                self._load_thread_entries(thread_id, entries_panel)
+                self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
+                loaded[0] = True
+                content_panel.visible = True
+            else:
+                content_panel.visible = not content_panel.visible
+            toggle_btn.text = _EXPAND if content_panel.visible else _COLLAPSE
+
+        toggle_btn.set_event_handler('click', _toggle)
         return card
 
     def _load_thread_entries(self, thread_id, entries_panel):
@@ -503,6 +539,196 @@ class Form1(Form1Template):
             entries_panel.clear()
             entries_panel.add_component(Label(text=f'Error: {e}', role='body', font_size=13))
 
+    def _build_thread_actions(self, thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl):
+        actions_panel.clear()
+        try:
+            with anvil.server.no_loading_indicator:
+                fleet = anvil.server.call('get_agent_fleet')
+        except Exception as e:
+            actions_panel.add_component(Label(text=f'⚠️ Could not load agents: {e}', role='body', font_size=12))
+            fleet = []
+
+        wireable = [a for a in fleet if a.get('status') == 'active' and a.get('webhook_url')]
+        bound_agent = t_state[0].get('bound_agent')
+        bound_has_webhook = any(
+            a['agent_name'] == bound_agent and a.get('webhook_url') for a in fleet
+        ) if bound_agent else False
+
+        actions_panel.add_component(Label(text='─' * 20, role='body', font_size=11))
+
+        # ── Annotate ──────────────────────────────────────────────────────────
+        actions_panel.add_component(Label(text='Add annotation', role='body', font_size=13, bold=True))
+        ann_ta = TextArea(placeholder='Annotation content…', height=80)
+        actions_panel.add_component(ann_ta)
+        ann_row = FlowPanel(spacing_above='none', spacing_below='none')
+        ann_btn = Button(text='Add annotation', role='tonal-button')
+        ann_fb = Label(text='', role='body', font_size=12)
+        ann_row.add_component(ann_btn)
+        ann_row.add_component(ann_fb)
+        actions_panel.add_component(ann_row)
+
+        def _annotate(**kw):
+            content = (ann_ta.text or '').strip()
+            if not content:
+                ann_fb.text = '⚠️ Empty'
+                return
+            ann_fb.text = 'Saving…'
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('add_thread_entry', thread_id, 'annotation', content,
+                                      source='bill', embed=True)
+                ann_ta.text = ''
+                ann_fb.text = '✅ Added'
+                self._load_thread_entries(thread_id, entries_panel)
+            except Exception as e:
+                ann_fb.text = f'❌ {e}'
+        ann_btn.set_event_handler('click', _annotate)
+
+        # ── State change ──────────────────────────────────────────────────────
+        actions_panel.add_component(Label(text='State', role='body', font_size=13, bold=True))
+        state_row = FlowPanel(spacing_above='none', spacing_below='none')
+        state_dd = DropDown(items=['active', 'dormant', 'closed'],
+                            selected_value=t_state[0].get('state', 'active'))
+        close_tb = TextBox(placeholder='Close reason (optional)')
+        close_tb.visible = (t_state[0].get('state') == 'closed')
+        state_upd_btn = Button(text='Update state', role='tonal-button')
+        state_fb = Label(text='', role='body', font_size=12)
+        state_row.add_component(state_dd)
+        state_row.add_component(close_tb)
+        state_row.add_component(state_upd_btn)
+        state_row.add_component(state_fb)
+        actions_panel.add_component(state_row)
+
+        def _state_dd_changed(**kw):
+            close_tb.visible = (state_dd.selected_value == 'closed')
+        state_dd.set_event_handler('change', _state_dd_changed)
+
+        def _update_state(**kw):
+            new_state = state_dd.selected_value
+            close_reason = (close_tb.text or '').strip() if new_state == 'closed' else None
+            state_fb.text = 'Updating…'
+            try:
+                with anvil.server.no_loading_indicator:
+                    thread = anvil.server.call('update_thread_state', thread_id, new_state, close_reason)
+                t_state[0] = thread
+                badge_lbl.text = f'  {_STATE_BADGE.get(new_state, new_state)}'
+                state_fb.text = '✅ Updated'
+                self._load_thread_entries(thread_id, entries_panel)
+            except Exception as e:
+                state_fb.text = f'❌ {e}'
+        state_upd_btn.set_event_handler('click', _update_state)
+
+        # ── Wire agent ────────────────────────────────────────────────────────
+        actions_panel.add_component(Label(text='Wire agent', role='body', font_size=13, bold=True))
+        wire_row = FlowPanel(spacing_above='none', spacing_below='none')
+        wire_fb = Label(text='', role='body', font_size=12)
+
+        if wireable:
+            agent_names = [a['agent_name'] for a in wireable]
+            wire_dd = DropDown(
+                items=agent_names,
+                selected_value=bound_agent if bound_agent in agent_names else agent_names[0],
+            )
+            wire_btn = Button(text='Wire agent', role='tonal-button')
+            wire_row.add_component(wire_dd)
+            wire_row.add_component(wire_btn)
+
+            if bound_agent:
+                unwire_btn = Button(text='Unwire', role='text-button')
+                wire_row.add_component(unwire_btn)
+
+                def _unwire(**kw):
+                    wire_fb.text = 'Unwiring…'
+                    try:
+                        with anvil.server.no_loading_indicator:
+                            thread = anvil.server.call('wire_thread_agent', thread_id, None)
+                        t_state[0] = thread
+                        meta_lbl.text = f'no agent wired  ·  last active {_rel_time(t_state[0].get("last_activity_at",""))}'
+                        self._load_thread_entries(thread_id, entries_panel)
+                        self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
+                    except Exception as e:
+                        wire_fb.text = f'❌ {e}'
+                unwire_btn.set_event_handler('click', _unwire)
+
+            def _wire_agent(**kw):
+                agent_name = wire_dd.selected_value
+                wire_fb.text = 'Wiring…'
+                try:
+                    with anvil.server.no_loading_indicator:
+                        thread = anvil.server.call('wire_thread_agent', thread_id, agent_name)
+                    t_state[0] = thread
+                    meta_lbl.text = f'{agent_name}  ·  last active {_rel_time(t_state[0].get("last_activity_at",""))}'
+                    self._load_thread_entries(thread_id, entries_panel)
+                    self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
+                except Exception as e:
+                    wire_fb.text = f'❌ {e}'
+            wire_btn.set_event_handler('click', _wire_agent)
+        else:
+            wire_row.add_component(Label(
+                text='No agents available — none have webhook URLs configured.',
+                role='body', font_size=12,
+            ))
+
+        wire_row.add_component(wire_fb)
+        actions_panel.add_component(wire_row)
+
+        # ── Gather (only when bound_agent with webhook) ───────────────────────
+        if bound_agent and bound_has_webhook:
+            gather_row = FlowPanel(spacing_above='none', spacing_below='none')
+            gather_btn = Button(text='▶ Gather', role='tonal-button')
+            gather_fb = Label(text='', role='body', font_size=12)
+            gather_row.add_component(gather_btn)
+            gather_row.add_component(gather_fb)
+            actions_panel.add_component(gather_row)
+
+            def _gather(**kw):
+                gather_fb.text = 'Triggering…'
+                gather_btn.enabled = False
+                try:
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('trigger_thread_gather', thread_id)
+                    gather_fb.text = '✅ Triggered'
+                    self._load_thread_entries(thread_id, entries_panel)
+                except Exception as e:
+                    gather_fb.text = f'❌ {e}'
+                finally:
+                    gather_btn.enabled = True
+            gather_btn.set_event_handler('click', _gather)
+
+        # ── Export ────────────────────────────────────────────────────────────
+        export_row = FlowPanel(spacing_above='none', spacing_below='none')
+        export_btn = Button(text='⬇ Export thread', role='tonal-button')
+        export_fb = Label(text='', role='body', font_size=12)
+        export_row.add_component(export_btn)
+        export_row.add_component(export_fb)
+        actions_panel.add_component(export_row)
+        export_fp = ColumnPanel()
+        export_fp.visible = False
+        actions_panel.add_component(export_fp)
+
+        def _export_thread(**kw):
+            export_fb.text = 'Exporting…'
+            export_fp.visible = False
+            try:
+                with anvil.server.no_loading_indicator:
+                    bundle = anvil.server.call('get_thread_bundle', thread_id)
+            except Exception as e:
+                export_fb.text = f'❌ {e}'
+                return
+            copied = False
+            try:
+                anvil.js.window.navigator.clipboard.writeText(bundle)
+                copied = True
+            except Exception:
+                pass
+            if copied:
+                export_fb.text = '✅ Copied'
+            else:
+                export_fb.text = '📋 Ready to copy below'
+                export_fp.clear()
+                export_fp.add_component(TextArea(text=bundle, height=300, enabled=True))
+                export_fp.visible = True
+        export_btn.set_event_handler('click', _export_thread)
 
     def refresh_data(self):
         self._load_status()
