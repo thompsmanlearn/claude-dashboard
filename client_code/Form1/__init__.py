@@ -13,6 +13,43 @@ _EXPAND = '\u25bc'   # ▼
 _COLLAPSE = '\u25b6'  # ▶
 
 
+_ENTRY_ICONS = {
+    'gather': '\U0001f50d',
+    'annotation': '\u270f\ufe0f',
+    'analysis': '\U0001f52c',
+    'conclusion': '\u2705',
+    'state_change': '\U0001f501',
+}
+_STATE_BADGE = {
+    'active': '\U0001f7e2 active',
+    'dormant': '\u26aa dormant',
+    'closed': '\u26ab closed',
+}
+
+
+def _rel_time(iso_str):
+    if not iso_str:
+        return ''
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        secs = int((now - ts).total_seconds())
+        if secs < 60:
+            return 'just now'
+        if secs < 3600:
+            return f'{secs // 60}m ago'
+        if secs < 86400:
+            return f'{secs // 3600}h ago'
+        days = secs // 86400
+        if days == 1:
+            return 'yesterday'
+        if days < 30:
+            return f'{days} days ago'
+        return f'{ts.strftime("%B")} {ts.day}'
+    except Exception:
+        return iso_str[:10]
+
 class Form1(Form1Template):
     def __init__(self, **properties):
         # Hash routing — must run before init_components
@@ -39,6 +76,8 @@ class Form1(Form1Template):
         self._artifacts_type_filter = None
         self._research_loaded = False
         self._research_articles = []
+        self._threads_loaded = False
+        self._threads_state_filter = 'active'
         self._build_layout()
         self.refresh_data()
 
@@ -79,6 +118,7 @@ class Form1(Form1Template):
         self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
         self._memory_tab_btn = Button(text='Memory', role='tonal-button')
         self._research_tab_btn = Button(text='Research', role='tonal-button')
+        self._threads_tab_btn = Button(text='Threads', role='tonal-button')
         self._skills_tab_btn = Button(text='Skills', role='tonal-button')
         self._artifacts_tab_btn = Button(text='Artifacts', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
@@ -86,6 +126,7 @@ class Form1(Form1Template):
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
         self._memory_tab_btn.set_event_handler('click', self._show_memory_tab)
         self._research_tab_btn.set_event_handler('click', self._show_research_tab)
+        self._threads_tab_btn.set_event_handler('click', self._show_threads_tab)
         self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
         self._artifacts_tab_btn.set_event_handler('click', self._show_artifacts_tab)
         tab_row.add_component(self._fleet_tab_btn)
@@ -93,6 +134,7 @@ class Form1(Form1Template):
         tab_row.add_component(self._lessons_tab_btn)
         tab_row.add_component(self._memory_tab_btn)
         tab_row.add_component(self._research_tab_btn)
+        tab_row.add_component(self._threads_tab_btn)
         tab_row.add_component(self._skills_tab_btn)
         tab_row.add_component(self._artifacts_tab_btn)
         self.content_panel.add_component(tab_row)
@@ -158,6 +200,12 @@ class Form1(Form1Template):
         self._research_panel.visible = False
         self._build_research_layout()
         self.content_panel.add_component(self._research_panel)
+
+        # Threads panel (hidden by default)
+        self._threads_panel = ColumnPanel()
+        self._threads_panel.visible = False
+        self._build_threads_layout()
+        self.content_panel.add_component(self._threads_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -252,6 +300,7 @@ class Form1(Form1Template):
             'lessons': self._lessons_panel,
             'memory': self._memory_panel,
             'research': self._research_panel,
+            'threads': self._threads_panel,
             'skills': self._skills_panel,
             'artifacts': self._artifacts_panel,
         }
@@ -261,6 +310,7 @@ class Form1(Form1Template):
             'lessons': self._lessons_tab_btn,
             'memory': self._memory_tab_btn,
             'research': self._research_tab_btn,
+            'threads': self._threads_tab_btn,
             'skills': self._skills_tab_btn,
             'artifacts': self._artifacts_tab_btn,
         }
@@ -305,6 +355,154 @@ class Form1(Form1Template):
         if not self._research_loaded:
             self._load_research_tab()
             self._research_loaded = True
+
+    def _show_threads_tab(self, **event_args):
+        self._set_tab('threads')
+        if not self._threads_loaded:
+            self._load_threads()
+            self._threads_loaded = True
+
+    # ── Threads tab ───────────────────────────────────────────────────────────
+
+    def _build_threads_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Threads', role='title', bold=True, font_size=20))
+        self._threads_state_dd = DropDown(
+            items=['active', 'dormant', 'closed', 'all'],
+            selected_value='active',
+        )
+        self._threads_state_dd.set_event_handler('change', self._threads_filter_changed)
+        hdr.add_component(self._threads_state_dd)
+        ref_btn = Button(text='\u21bb', role='text-button')
+        ref_btn.set_event_handler('click', lambda **kw: self._reload_threads())
+        hdr.add_component(ref_btn)
+        self._threads_panel.add_component(hdr)
+
+        self._threads_counter_lbl = Label(text='', role='body', font_size=14)
+        self._threads_panel.add_component(self._threads_counter_lbl)
+
+        self._threads_body = ColumnPanel()
+        self._threads_panel.add_component(self._threads_body)
+
+    def _threads_filter_changed(self, **event_args):
+        self._threads_state_filter = self._threads_state_dd.selected_value
+        self._load_threads()
+
+    def _reload_threads(self):
+        self._threads_loaded = False
+        self._load_threads()
+        self._threads_loaded = True
+
+    def _load_threads(self):
+        self._threads_body.clear()
+        self._threads_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        state = self._threads_state_filter
+        try:
+            with anvil.server.no_loading_indicator:
+                threads = anvil.server.call('get_threads', state=None if state == 'all' else state)
+            self._threads_body.clear()
+            n = len(threads)
+            label_state = state if state != 'all' else ''
+            self._threads_counter_lbl.text = (
+                f'{n} {label_state} thread(s)' if label_state else f'{n} thread(s)'
+            )
+            if not threads:
+                self._threads_body.add_component(
+                    Label(text=f'No {state} threads.', role='body', font_size=16)
+                )
+                return
+            for t in threads:
+                self._threads_body.add_component(self._build_thread_card(t))
+        except Exception as e:
+            self._threads_body.clear()
+            self._threads_counter_lbl.text = ''
+            self._threads_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+
+    def _build_thread_card(self, t):
+        thread_id = t.get('id', '')
+        title = t.get('title') or '(untitled)'
+        question = t.get('question') or ''
+        state = t.get('state') or 'active'
+        bound_agent = t.get('bound_agent')
+        last_activity = t.get('last_activity_at') or t.get('updated_at') or ''
+        created_at = t.get('created_at') or ''
+
+        card = ColumnPanel(role='outlined-card')
+
+        # Collapsed header (always visible)
+        hdr_panel = ColumnPanel()
+        title_row = FlowPanel(spacing_above='none', spacing_below='none')
+        toggle_btn = Button(text=_COLLAPSE, role='text-button')
+        title_row.add_component(toggle_btn)
+        title_row.add_component(Label(text=title, bold=True, role='body', font_size=16))
+        badge_text = _STATE_BADGE.get(state, state)
+        title_row.add_component(Label(text=f'  {badge_text}', role='body', font_size=13))
+        hdr_panel.add_component(title_row)
+
+        if question:
+            q_preview = question[:80] + ('\u2026' if len(question) > 80 else '')
+            hdr_panel.add_component(Label(text=q_preview, role='body', font_size=13))
+
+        agent_text = bound_agent if bound_agent else 'no agent wired'
+        meta = f'{agent_text}  \u00b7  last active {_rel_time(last_activity)}'
+        hdr_panel.add_component(Label(text=meta, role='body', font_size=12))
+
+        card.add_component(hdr_panel)
+
+        # Entries panel (hidden until expanded)
+        entries_panel = ColumnPanel()
+        entries_panel.visible = False
+        card.add_component(entries_panel)
+
+        def _make_toggle(tid, ep, tb):
+            loaded = [False]
+            def _h(**kw):
+                if not loaded[0]:
+                    self._load_thread_entries(tid, ep)
+                    loaded[0] = True
+                    ep.visible = True
+                else:
+                    ep.visible = not ep.visible
+                tb.text = _EXPAND if ep.visible else _COLLAPSE
+            return _h
+
+        toggle_btn.set_event_handler('click', _make_toggle(thread_id, entries_panel, toggle_btn))
+        return card
+
+    def _load_thread_entries(self, thread_id, entries_panel):
+        entries_panel.clear()
+        entries_panel.add_component(Label(text='Loading entries\u2026', role='body', font_size=13))
+        try:
+            with anvil.server.no_loading_indicator:
+                entries = anvil.server.call('get_thread_entries', thread_id)
+            entries_panel.clear()
+            if not entries:
+                entries_panel.add_component(
+                    Label(text='No entries yet.', role='body', font_size=13)
+                )
+                return
+            for e in entries:
+                entry_type = e.get('entry_type') or 'annotation'
+                icon = _ENTRY_ICONS.get(entry_type, '\u2022')
+                content = e.get('content') or ''
+                if len(content) > 600:
+                    content = content[:600] + ' [truncated]'
+                source = e.get('source') or ''
+                created = e.get('created_at') or ''
+
+                row = FlowPanel(spacing_above='none', spacing_below='none')
+                row.add_component(Label(text=icon, role='body', font_size=13))
+                row.add_component(Label(text=f'  {entry_type}', role='body', font_size=12))
+                row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                entries_panel.add_component(row)
+                entries_panel.add_component(Label(text=content, role='body', font_size=13))
+                if source:
+                    entries_panel.add_component(Label(text=source, role='body', font_size=12))
+                entries_panel.add_component(Label(text='\u2015' * 15, role='body', font_size=11))
+        except Exception as e:
+            entries_panel.clear()
+            entries_panel.add_component(Label(text=f'Error: {e}', role='body', font_size=13))
+
 
     def refresh_data(self):
         self._load_status()
