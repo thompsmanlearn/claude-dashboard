@@ -730,6 +730,37 @@ class Form1(Form1Template):
                 export_fp.visible = True
         export_btn.set_event_handler('click', _export_thread)
 
+        # ── Add desktop analysis ──────────────────────────────────────────────
+        actions_panel.add_component(Label(text='Add desktop analysis', role='body', font_size=13, bold=True))
+        analysis_ta = TextArea(placeholder='Paste analysis from desktop Claude…', height=120)
+        actions_panel.add_component(analysis_ta)
+        analysis_ctrl_row = FlowPanel(spacing_above='none', spacing_below='none')
+        analysis_type_dd = DropDown(items=['analysis', 'annotation', 'conclusion'], selected_value='analysis')
+        analysis_btn = Button(text='Add as analysis entry', role='tonal-button')
+        analysis_fb = Label(text='', role='body', font_size=12)
+        analysis_ctrl_row.add_component(analysis_type_dd)
+        analysis_ctrl_row.add_component(analysis_btn)
+        analysis_ctrl_row.add_component(analysis_fb)
+        actions_panel.add_component(analysis_ctrl_row)
+
+        def _add_analysis(**kw):
+            content = (analysis_ta.text or '').strip()
+            if not content:
+                analysis_fb.text = '⚠️ Empty'
+                return
+            analysis_fb.text = 'Saving…'
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('add_thread_entry', thread_id,
+                                      analysis_type_dd.selected_value, content,
+                                      source='desktop_claude', embed=True)
+                analysis_ta.text = ''
+                analysis_fb.text = '✅ Added'
+                self._load_thread_entries(thread_id, entries_panel)
+            except Exception as e:
+                analysis_fb.text = f'❌ {e}'
+        analysis_btn.set_event_handler('click', _add_analysis)
+
     def refresh_data(self):
         self._load_status()
         self._load_agents()
@@ -1915,8 +1946,83 @@ class Form1(Form1Template):
         status_dd.set_event_handler('change', _make_status(article_id, status_dd, fb_label))
         action_row.add_component(status_dd)
 
+        thread_btn = Button(text='Add to thread', role='outlined-button')
+        action_row.add_component(thread_btn)
+
         card.add_component(action_row)
         card.add_component(fb_label)
+
+        picker_panel = ColumnPanel()
+        picker_panel.visible = False
+        card.add_component(picker_panel)
+
+        def _make_add_to_thread(aid, art, p_panel, lbl):
+            def _h(**kw):
+                if p_panel.visible:
+                    p_panel.visible = False
+                    return
+                p_panel.clear()
+                try:
+                    with anvil.server.no_loading_indicator:
+                        threads = anvil.server.call('get_threads', 'active')
+                except Exception as ex:
+                    p_panel.add_component(Label(text=f'❌ {ex}', role='body', font_size=12))
+                    p_panel.visible = True
+                    return
+                if not threads:
+                    p_panel.add_component(Label(
+                        text='No active threads. Create one in the Threads tab first.',
+                        role='body', font_size=12,
+                    ))
+                    p_panel.visible = True
+                    return
+                thread_titles = [t['title'] for t in threads]
+                thread_dd = DropDown(items=thread_titles, selected_value=thread_titles[0])
+                pick_btn = Button(text='Add', role='tonal-button')
+                pick_row = FlowPanel(spacing_above='none', spacing_below='none')
+                pick_row.add_component(thread_dd)
+                pick_row.add_component(pick_btn)
+                p_panel.add_component(pick_row)
+                p_panel.visible = True
+
+                def _make_pick(thr_list, t_dd, a_id, a_art, lbl_ref, pp):
+                    def _pick(**kw):
+                        chosen = next((t for t in thr_list if t['title'] == t_dd.selected_value), None)
+                        if not chosen:
+                            return
+                        a_title = a_art.get('title') or '(no title)'
+                        a_url = a_art.get('url') or ''
+                        a_src = a_art.get('source') or ''
+                        a_summ = (a_art.get('summary') or '')[:400]
+                        a_rating = a_art.get('rating') or 0
+                        a_comment = (a_art.get('comment') or '').strip()
+                        parts = [a_title, a_url]
+                        if a_src:
+                            parts.append(f'Source: {a_src}')
+                        if a_summ:
+                            parts.append(a_summ)
+                        if a_rating:
+                            parts.append(f'Rating: {"+1" if a_rating == 1 else "-1"}')
+                        if a_comment:
+                            parts.append(f'Comment: {a_comment}')
+                        content = '\n'.join(p for p in parts if p)
+                        try:
+                            with anvil.server.no_loading_indicator:
+                                anvil.server.call('add_thread_entry', chosen['id'], 'gather',
+                                                  content,
+                                                  source=f'research_articles:{a_id}',
+                                                  embed=True)
+                            lbl_ref.text = f'✅ Added to {chosen["title"]}'
+                            pp.visible = False
+                        except Exception as ex:
+                            lbl_ref.text = f'❌ {ex}'
+                    return _pick
+
+                pick_btn.set_event_handler('click', _make_pick(threads, thread_dd, aid, art, lbl, p_panel))
+            return _h
+
+        thread_btn.set_event_handler('click', _make_add_to_thread(article_id, article, picker_panel, fb_label))
+
         return card
 
     def _load_feedback_threads(self):
