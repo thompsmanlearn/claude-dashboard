@@ -513,7 +513,7 @@ class Form1(Form1Template):
                 entries = anvil.server.call('get_thread_entries', thread_id)
             entries_panel.clear()
 
-            # \u2500\u2500 Header: question + state \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            # Header: full question + state badge
             td = t_state[0] if t_state else {}
             question = td.get('question') or ''
             state = td.get('state') or 'active'
@@ -523,21 +523,13 @@ class Form1(Form1Template):
                 text=_STATE_BADGE.get(state, state), role='body', font_size=13
             ))
 
-            # \u2500\u2500 Standing summary: first paragraph of most recent analysis \u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            analyses = [e for e in entries if (e.get('entry_type') or '') == 'analysis']
-            if analyses:
-                raw = analyses[-1].get('content') or ''
-                bp = raw.find('\n\n')
-                summary = raw[:bp] if 0 < bp <= 300 else raw[:300]
-                if summary:
-                    entries_panel.add_component(Label(
-                        text='Standing summary', role='body', font_size=12, bold=True
-                    ))
-                    entries_panel.add_component(Label(text=summary, role='body', font_size=13))
+            # Standing summary removed: first-paragraph-of-analysis approximates framing,
+            # not conclusions. Restore when entry_type=\'summary\' exists in thread_entries.
+            # See: claudis/anvil-redesign-principles-and-plan.md
 
             entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
 
-            # \u2500\u2500 Main content: annotation, gather, analysis, conclusion \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            # Main content: annotation, gather, analysis, conclusion -- no state_change rows
             content_entries = [e for e in entries
                                if (e.get('entry_type') or 'annotation') != 'state_change']
             if content_entries:
@@ -561,14 +553,11 @@ class Form1(Form1Template):
             else:
                 entries_panel.add_component(Label(text='No content entries yet.', role='body', font_size=13))
 
-            # \u2500\u2500 Sub-questions placeholder \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
-            entries_panel.add_component(Label(
-                text='Sub-questions', role='body', font_size=14, bold=True
-            ))
-            entries_panel.add_component(Label(text='(none yet)', role='body', font_size=13))
+            # Sub-questions section removed: schema does not yet model sub-questions.
+            # Restore when sub_questions schema and spawn-thread button land.
+            # See: claudis/anvil-redesign-principles-and-plan.md
 
-            # \u2500\u2500 History log toggle \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            # History log toggle -- collapsed by default, shows state_change entries
             entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
             history_entries = [e for e in entries if (e.get('entry_type') or '') == 'state_change']
             hist_count = len(history_entries)
@@ -600,8 +589,11 @@ class Form1(Form1Template):
         except Exception as e:
             entries_panel.clear()
             entries_panel.add_component(Label(text=f'Error: {e}', role='body', font_size=13))
-
     def _build_thread_actions(self, thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl):
+        # NOTE: This panel still uses the pre-redesign five-flat-controls layout.
+        # The redesign (see claudis/anvil-redesign-principles-and-plan.md, "Thread page")
+        # collapses these to Gather / Export / Paste analysis + annotation, with
+        # state changes moving into the History drawer. Pending its own card.
         actions_panel.clear()
         try:
             with anvil.server.no_loading_indicator:
