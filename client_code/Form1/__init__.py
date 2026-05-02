@@ -19,6 +19,10 @@ _ENTRY_ICONS = {
     'analysis': '\U0001f52c',
     'conclusion': '\u2705',
     'state_change': '\U0001f501',
+    'summary': '\U0001f4cb',
+    'screening': '\U0001f50e',
+    'screening_uncertain': '\u2753',
+    'sub_question_candidate': '\U0001f4ac',
 }
 _STATE_BADGE = {
     'active': '\U0001f7e2 active',
@@ -532,23 +536,123 @@ class Form1(Form1Template):
             # Main content: annotation, gather, analysis, conclusion -- no state_change rows
             content_entries = [e for e in entries
                                if (e.get('entry_type') or 'annotation') != 'state_change']
+            def _make_screening_handlers(eid, tid, iid, dec, rea, cbtn, obtn, rbtn, rfb, ep, ts):
+                def _confirm(**kw):
+                    rfb.text = 'Applying\u2026'
+                    cbtn.enabled = obtn.enabled = rbtn.enabled = False
+                    try:
+                        with anvil.server.no_loading_indicator:
+                            anvil.server.call('resolve_screening_uncertain', eid, tid, iid, dec, rea, 'confirm')
+                        rfb.text = '\u2705 Confirmed'
+                        self._load_thread_entries(tid, ep, ts)
+                    except Exception as ex:
+                        rfb.text = f'\u274c {ex}'
+                        cbtn.enabled = obtn.enabled = rbtn.enabled = True
+                def _override(**kw):
+                    rfb.text = 'Applying\u2026'
+                    cbtn.enabled = obtn.enabled = rbtn.enabled = False
+                    try:
+                        with anvil.server.no_loading_indicator:
+                            anvil.server.call('resolve_screening_uncertain', eid, tid, iid, dec, rea, 'override')
+                        rfb.text = '\u2705 Overridden'
+                        self._load_thread_entries(tid, ep, ts)
+                    except Exception as ex:
+                        rfb.text = f'\u274c {ex}'
+                        cbtn.enabled = obtn.enabled = rbtn.enabled = True
+                def _reject(**kw):
+                    rfb.text = 'Applying\u2026'
+                    cbtn.enabled = obtn.enabled = rbtn.enabled = False
+                    try:
+                        with anvil.server.no_loading_indicator:
+                            anvil.server.call('resolve_screening_uncertain', eid, tid, iid, dec, rea, 'reject')
+                        rfb.text = '\u2705 Rejected'
+                        self._load_thread_entries(tid, ep, ts)
+                    except Exception as ex:
+                        rfb.text = f'\u274c {ex}'
+                        cbtn.enabled = obtn.enabled = rbtn.enabled = True
+                cbtn.set_event_handler('click', _confirm)
+                obtn.set_event_handler('click', _override)
+                rbtn.set_event_handler('click', _reject)
+
             if content_entries:
                 for e in content_entries:
                     entry_type = e.get('entry_type') or 'annotation'
                     icon = _ENTRY_ICONS.get(entry_type, '\u2022')
                     content = e.get('content') or ''
-                    if len(content) > 600:
-                        content = content[:600] + ' [truncated]'
                     source = e.get('source') or ''
                     created = e.get('created_at') or ''
+                    entry_id = e.get('id') or ''
+                    metadata = e.get('metadata') or {}
                     row = FlowPanel(spacing_above='none', spacing_below='none')
                     row.add_component(Label(text=icon, role='body', font_size=13))
-                    row.add_component(Label(text=f'  {entry_type}', role='body', font_size=12))
-                    row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
-                    entries_panel.add_component(row)
-                    entries_panel.add_component(Label(text=content, role='body', font_size=13))
-                    if source:
-                        entries_panel.add_component(Label(text=source, role='body', font_size=12))
+
+                    if entry_type == 'summary':
+                        row.add_component(Label(text='  Standing summary', role='body', font_size=12, bold=True))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=content, role='body', font_size=13))
+
+                    elif entry_type == 'screening':
+                        row.add_component(Label(text='  screening', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=content, role='body', font_size=13))
+
+                    elif entry_type == 'screening_uncertain':
+                        row.add_component(Label(text='  screening (pending Bill review)', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        try:
+                            import json as _jmod
+                            decision_data = _jmod.loads(content)
+                            item_id = decision_data.get('item_id', '')
+                            decision = decision_data.get('decision', '')
+                            reason = decision_data.get('reason', '')
+                            entries_panel.add_component(Label(
+                                text=f'Decision: {decision} \u2014 {reason}', role='body', font_size=13
+                            ))
+                        except Exception:
+                            decision_data = {}
+                            item_id = decision = reason = ''
+                            entries_panel.add_component(Label(text=content[:300], role='body', font_size=13))
+                        resolved = isinstance(metadata, dict) and metadata.get('resolved', False)
+                        if resolved:
+                            entries_panel.add_component(Label(
+                                text=f'\u2705 Resolved: {metadata.get("resolution", "")}',
+                                role='body', font_size=12
+                            ))
+                        elif item_id:
+                            btn_row = FlowPanel(spacing_above='none', spacing_below='none')
+                            confirm_btn = Button(text='Confirm', role='tonal-button')
+                            override_btn = Button(text='Override', role='outlined-button')
+                            reject_btn = Button(text='Reject', role='text-button')
+                            res_fb = Label(text='', role='body', font_size=12)
+                            btn_row.add_component(confirm_btn)
+                            btn_row.add_component(override_btn)
+                            btn_row.add_component(reject_btn)
+                            btn_row.add_component(res_fb)
+                            entries_panel.add_component(btn_row)
+                            _make_screening_handlers(
+                                entry_id, thread_id, item_id, decision, reason,
+                                confirm_btn, override_btn, reject_btn, res_fb,
+                                entries_panel, t_state,
+                            )
+
+                    elif entry_type == 'sub_question_candidate':
+                        row.add_component(Label(text='  sub-question candidate', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=content, role='body', font_size=13))
+
+                    else:
+                        display = content if len(content) <= 600 else content[:600] + ' [truncated]'
+                        row.add_component(Label(text=f'  {entry_type}', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=display, role='body', font_size=13))
+                        if source:
+                            entries_panel.add_component(Label(text=source, role='body', font_size=12))
+
                     entries_panel.add_component(Label(text='\u2015' * 15, role='body', font_size=11))
             else:
                 entries_panel.add_component(Label(text='No content entries yet.', role='body', font_size=13))
@@ -668,30 +772,93 @@ class Form1(Form1Template):
         analysis_ta = TextArea(placeholder='Paste analysis from desktop Claude…', height=120)
         actions_panel.add_component(analysis_ta)
         analysis_ctrl_row = FlowPanel(spacing_above='none', spacing_below='none')
-        analysis_type_dd = DropDown(items=['analysis', 'annotation', 'conclusion'], selected_value='analysis')
         analysis_btn = Button(text='Add as analysis entry', role='filled-button')
         analysis_fb = Label(text='', role='body', font_size=12)
-        analysis_ctrl_row.add_component(analysis_type_dd)
         analysis_ctrl_row.add_component(analysis_btn)
         analysis_ctrl_row.add_component(analysis_fb)
         actions_panel.add_component(analysis_ctrl_row)
 
         def _add_analysis(**kw):
+            import json as _jmod
             content = (analysis_ta.text or '').strip()
             if not content:
                 analysis_fb.text = '⚠️ Empty'
                 return
-            analysis_fb.text = 'Saving…'
+            analysis_fb.text = 'Extracting…'
+            analysis_btn.enabled = False
             try:
                 with anvil.server.no_loading_indicator:
-                    anvil.server.call('add_thread_entry', thread_id,
-                                      analysis_type_dd.selected_value, content,
+                    result = anvil.server.call('extract_analysis', thread_id, content, 'desktop_claude')
+
+                if result.get('error'):
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('add_thread_entry', thread_id, 'analysis', content,
+                                          source='desktop_claude', embed=True)
+                    analysis_ta.text = ''
+                    analysis_fb.text = f'Extraction failed: {result["error"]}; analysis saved as plain entry'
+                    self._load_thread_entries(thread_id, entries_panel, t_state)
+                    return
+
+                # Full prose as 'analysis' entry
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('add_thread_entry', thread_id, 'analysis', content,
                                       source='desktop_claude', embed=True)
+
+                # Conclusions as 'summary' entry
+                conclusions = result.get('conclusions') or []
+                if conclusions:
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('add_thread_entry', thread_id, 'summary',
+                                          '\n'.join(f'- {c}' for c in conclusions),
+                                          source='desktop_claude', embed=True)
+
+                # Screening decisions
+                for item in (result.get('screening') or []):
+                    item_id = item.get('item_id', '')
+                    decision = item.get('decision', '')
+                    reason = item.get('reason', '')
+                    confidence = item.get('confidence', 'low')
+                    if not item_id or not decision:
+                        continue
+                    if confidence == 'high':
+                        rating = 1 if decision == 'kept' else -1
+                        try:
+                            with anvil.server.no_loading_indicator:
+                                anvil.server.call('rate_research_article', item_id, rating)
+                                anvil.server.call('set_research_article_status', item_id, 'reviewed')
+                        except Exception:
+                            pass
+                        with anvil.server.no_loading_indicator:
+                            anvil.server.call('add_thread_entry', thread_id, 'screening',
+                                              f'{decision.title()}: {reason}',
+                                              source='desktop_claude', embed=False)
+                    else:
+                        with anvil.server.no_loading_indicator:
+                            anvil.server.call('add_thread_entry', thread_id, 'screening_uncertain',
+                                              _jmod.dumps({'item_id': item_id, 'decision': decision,
+                                                           'reason': reason}),
+                                              source='desktop_claude', embed=False)
+
+                # Sub-question candidates
+                for sq in (result.get('sub_questions') or []):
+                    question = sq.get('question', '')
+                    if not question:
+                        continue
+                    pb = sq.get('prompted_by', '')
+                    sq_text = f'{question}\n(prompted by: {pb})' if pb else question
+                    with anvil.server.no_loading_indicator:
+                        anvil.server.call('add_thread_entry', thread_id, 'sub_question_candidate',
+                                          sq_text, source='desktop_claude', embed=True)
+
                 analysis_ta.text = ''
-                analysis_fb.text = '✅ Added'
+                n_sc = len(result.get('screening') or [])
+                n_sq = len(result.get('sub_questions') or [])
+                analysis_fb.text = f'✅ Extracted: {n_sc} screening, {n_sq} questions'
                 self._load_thread_entries(thread_id, entries_panel, t_state)
             except Exception as e:
                 analysis_fb.text = f'❌ {e}'
+            finally:
+                analysis_btn.enabled = True
         analysis_btn.set_event_handler('click', _add_analysis)
 
         # ── Annotate (secondary) ──────────────────────────────────────────────
