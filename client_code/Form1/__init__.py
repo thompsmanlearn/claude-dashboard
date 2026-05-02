@@ -590,10 +590,6 @@ class Form1(Form1Template):
             entries_panel.clear()
             entries_panel.add_component(Label(text=f'Error: {e}', role='body', font_size=13))
     def _build_thread_actions(self, thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl):
-        # NOTE: This panel still uses the pre-redesign five-flat-controls layout.
-        # The redesign (see claudis/anvil-redesign-principles-and-plan.md, "Thread page")
-        # collapses these to Gather / Export / Paste analysis + annotation, with
-        # state changes moving into the History drawer. Pending its own card.
         actions_panel.clear()
         try:
             with anvil.server.no_loading_indicator:
@@ -610,12 +606,101 @@ class Form1(Form1Template):
 
         actions_panel.add_component(Label(text='─' * 20, role='body', font_size=11))
 
-        # ── Annotate ──────────────────────────────────────────────────────────
-        actions_panel.add_component(Label(text='Add annotation', role='body', font_size=13, bold=True))
+        # ── Gather ────────────────────────────────────────────────────────────
+        gather_btn = Button(text='▶ Gather', role='filled-button',
+                            enabled=bool(bound_agent and bound_has_webhook))
+        gather_fb = Label(
+            text='' if (bound_agent and bound_has_webhook) else 'Wire an agent with a webhook to enable',
+            role='body', font_size=12,
+        )
+        actions_panel.add_component(gather_btn)
+        actions_panel.add_component(gather_fb)
+
+        def _gather(**kw):
+            gather_fb.text = 'Triggering…'
+            gather_btn.enabled = False
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('trigger_thread_gather', thread_id)
+                gather_fb.text = '✅ Triggered'
+                self._load_thread_entries(thread_id, entries_panel, t_state)
+            except Exception as e:
+                gather_fb.text = f'❌ {e}'
+            finally:
+                gather_btn.enabled = True
+        gather_btn.set_event_handler('click', _gather)
+
+        # ── Export ────────────────────────────────────────────────────────────
+        export_btn = Button(text='⬇ Export thread', role='filled-button')
+        export_fb = Label(text='', role='body', font_size=12)
+        actions_panel.add_component(export_btn)
+        actions_panel.add_component(export_fb)
+        export_fp = ColumnPanel()
+        export_fp.visible = False
+        actions_panel.add_component(export_fp)
+
+        def _export_thread(**kw):
+            export_fb.text = 'Exporting…'
+            export_fp.visible = False
+            try:
+                with anvil.server.no_loading_indicator:
+                    bundle = anvil.server.call('get_thread_bundle', thread_id)
+            except Exception as e:
+                export_fb.text = f'❌ {e}'
+                return
+            copied = False
+            try:
+                anvil.js.window.navigator.clipboard.writeText(bundle)
+                copied = True
+            except Exception:
+                pass
+            if copied:
+                export_fb.text = '✅ Copied'
+            else:
+                export_fb.text = '📋 Ready to copy below'
+                export_fp.clear()
+                export_fp.add_component(TextArea(text=bundle, height=300, enabled=True))
+                export_fp.visible = True
+        export_btn.set_event_handler('click', _export_thread)
+
+        # ── Paste analysis ────────────────────────────────────────────────────
+        actions_panel.add_component(Label(text='Paste analysis', role='body', font_size=13, bold=True))
+        analysis_ta = TextArea(placeholder='Paste analysis from desktop Claude…', height=120)
+        actions_panel.add_component(analysis_ta)
+        analysis_ctrl_row = FlowPanel(spacing_above='none', spacing_below='none')
+        analysis_type_dd = DropDown(items=['analysis', 'annotation', 'conclusion'], selected_value='analysis')
+        analysis_btn = Button(text='Add as analysis entry', role='filled-button')
+        analysis_fb = Label(text='', role='body', font_size=12)
+        analysis_ctrl_row.add_component(analysis_type_dd)
+        analysis_ctrl_row.add_component(analysis_btn)
+        analysis_ctrl_row.add_component(analysis_fb)
+        actions_panel.add_component(analysis_ctrl_row)
+
+        def _add_analysis(**kw):
+            content = (analysis_ta.text or '').strip()
+            if not content:
+                analysis_fb.text = '⚠️ Empty'
+                return
+            analysis_fb.text = 'Saving…'
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('add_thread_entry', thread_id,
+                                      analysis_type_dd.selected_value, content,
+                                      source='desktop_claude', embed=True)
+                analysis_ta.text = ''
+                analysis_fb.text = '✅ Added'
+                self._load_thread_entries(thread_id, entries_panel, t_state)
+            except Exception as e:
+                analysis_fb.text = f'❌ {e}'
+        analysis_btn.set_event_handler('click', _add_analysis)
+
+        # ── Annotate (secondary) ──────────────────────────────────────────────
+        actions_panel.add_component(Label(text='─' * 10, role='body', font_size=11))
+        actions_panel.add_component(Label(text='Annotate', role='body', font_size=12))
         ann_ta = TextArea(placeholder='Annotation content…', height=80)
         actions_panel.add_component(ann_ta)
         ann_row = FlowPanel(spacing_above='none', spacing_below='none')
-        ann_btn = Button(text='Add annotation', role='tonal-button')
+        ann_btn = Button(text='Add annotation', role='outlined-button')
         ann_fb = Label(text='', role='body', font_size=12)
         ann_row.add_component(ann_btn)
         ann_row.add_component(ann_fb)
@@ -638,8 +723,15 @@ class Form1(Form1Template):
                 ann_fb.text = f'❌ {e}'
         ann_btn.set_event_handler('click', _annotate)
 
-        # ── State change ──────────────────────────────────────────────────────
-        actions_panel.add_component(Label(text='State', role='body', font_size=13, bold=True))
+        # ── Thread settings drawer (state, agent) ─────────────────────────────
+        actions_panel.add_component(Label(text='─' * 10, role='body', font_size=11))
+        settings_btn = Button(text='▶ Thread settings (state, agent)', role='text-button')
+        actions_panel.add_component(settings_btn)
+        settings_panel = ColumnPanel()
+        settings_panel.visible = False
+
+        # State change
+        settings_panel.add_component(Label(text='State', role='body', font_size=13, bold=True))
         state_row = FlowPanel(spacing_above='none', spacing_below='none')
         state_dd = DropDown(items=['active', 'dormant', 'closed'],
                             selected_value=t_state[0].get('state', 'active'))
@@ -651,7 +743,7 @@ class Form1(Form1Template):
         state_row.add_component(close_tb)
         state_row.add_component(state_upd_btn)
         state_row.add_component(state_fb)
-        actions_panel.add_component(state_row)
+        settings_panel.add_component(state_row)
 
         def _state_dd_changed(**kw):
             close_tb.visible = (state_dd.selected_value == 'closed')
@@ -672,8 +764,8 @@ class Form1(Form1Template):
                 state_fb.text = f'❌ {e}'
         state_upd_btn.set_event_handler('click', _update_state)
 
-        # ── Wire agent ────────────────────────────────────────────────────────
-        actions_panel.add_component(Label(text='Wire agent', role='body', font_size=13, bold=True))
+        # Wire agent
+        settings_panel.add_component(Label(text='Wire agent', role='body', font_size=13, bold=True))
         wire_row = FlowPanel(spacing_above='none', spacing_below='none')
         wire_fb = Label(text='', role='body', font_size=12)
 
@@ -724,96 +816,16 @@ class Form1(Form1Template):
             ))
 
         wire_row.add_component(wire_fb)
-        actions_panel.add_component(wire_row)
+        settings_panel.add_component(wire_row)
+        actions_panel.add_component(settings_panel)
 
-        # ── Gather (only when bound_agent with webhook) ───────────────────────
-        if bound_agent and bound_has_webhook:
-            gather_row = FlowPanel(spacing_above='none', spacing_below='none')
-            gather_btn = Button(text='▶ Gather', role='tonal-button')
-            gather_fb = Label(text='', role='body', font_size=12)
-            gather_row.add_component(gather_btn)
-            gather_row.add_component(gather_fb)
-            actions_panel.add_component(gather_row)
-
-            def _gather(**kw):
-                gather_fb.text = 'Triggering…'
-                gather_btn.enabled = False
-                try:
-                    with anvil.server.no_loading_indicator:
-                        anvil.server.call('trigger_thread_gather', thread_id)
-                    gather_fb.text = '✅ Triggered'
-                    self._load_thread_entries(thread_id, entries_panel, t_state)
-                except Exception as e:
-                    gather_fb.text = f'❌ {e}'
-                finally:
-                    gather_btn.enabled = True
-            gather_btn.set_event_handler('click', _gather)
-
-        # ── Export ────────────────────────────────────────────────────────────
-        export_row = FlowPanel(spacing_above='none', spacing_below='none')
-        export_btn = Button(text='⬇ Export thread', role='tonal-button')
-        export_fb = Label(text='', role='body', font_size=12)
-        export_row.add_component(export_btn)
-        export_row.add_component(export_fb)
-        actions_panel.add_component(export_row)
-        export_fp = ColumnPanel()
-        export_fp.visible = False
-        actions_panel.add_component(export_fp)
-
-        def _export_thread(**kw):
-            export_fb.text = 'Exporting…'
-            export_fp.visible = False
-            try:
-                with anvil.server.no_loading_indicator:
-                    bundle = anvil.server.call('get_thread_bundle', thread_id)
-            except Exception as e:
-                export_fb.text = f'❌ {e}'
-                return
-            copied = False
-            try:
-                anvil.js.window.navigator.clipboard.writeText(bundle)
-                copied = True
-            except Exception:
-                pass
-            if copied:
-                export_fb.text = '✅ Copied'
-            else:
-                export_fb.text = '📋 Ready to copy below'
-                export_fp.clear()
-                export_fp.add_component(TextArea(text=bundle, height=300, enabled=True))
-                export_fp.visible = True
-        export_btn.set_event_handler('click', _export_thread)
-
-        # ── Add desktop analysis ──────────────────────────────────────────────
-        actions_panel.add_component(Label(text='Add desktop analysis', role='body', font_size=13, bold=True))
-        analysis_ta = TextArea(placeholder='Paste analysis from desktop Claude…', height=120)
-        actions_panel.add_component(analysis_ta)
-        analysis_ctrl_row = FlowPanel(spacing_above='none', spacing_below='none')
-        analysis_type_dd = DropDown(items=['analysis', 'annotation', 'conclusion'], selected_value='analysis')
-        analysis_btn = Button(text='Add as analysis entry', role='tonal-button')
-        analysis_fb = Label(text='', role='body', font_size=12)
-        analysis_ctrl_row.add_component(analysis_type_dd)
-        analysis_ctrl_row.add_component(analysis_btn)
-        analysis_ctrl_row.add_component(analysis_fb)
-        actions_panel.add_component(analysis_ctrl_row)
-
-        def _add_analysis(**kw):
-            content = (analysis_ta.text or '').strip()
-            if not content:
-                analysis_fb.text = '⚠️ Empty'
-                return
-            analysis_fb.text = 'Saving…'
-            try:
-                with anvil.server.no_loading_indicator:
-                    anvil.server.call('add_thread_entry', thread_id,
-                                      analysis_type_dd.selected_value, content,
-                                      source='desktop_claude', embed=True)
-                analysis_ta.text = ''
-                analysis_fb.text = '✅ Added'
-                self._load_thread_entries(thread_id, entries_panel, t_state)
-            except Exception as e:
-                analysis_fb.text = f'❌ {e}'
-        analysis_btn.set_event_handler('click', _add_analysis)
+        def _toggle_settings(**kw):
+            settings_panel.visible = not settings_panel.visible
+            settings_btn.text = (
+                '▼ Thread settings (state, agent)' if settings_panel.visible
+                else '▶ Thread settings (state, agent)'
+            )
+        settings_btn.set_event_handler('click', _toggle_settings)
 
     def refresh_data(self):
         self._load_status()
