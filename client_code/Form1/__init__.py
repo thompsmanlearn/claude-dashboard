@@ -494,7 +494,7 @@ class Form1(Form1Template):
 
         def _toggle(**kw):
             if not loaded[0]:
-                self._load_thread_entries(thread_id, entries_panel)
+                self._load_thread_entries(thread_id, entries_panel, t_state)
                 self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
                 loaded[0] = True
                 content_panel.visible = True
@@ -505,36 +505,98 @@ class Form1(Form1Template):
         toggle_btn.set_event_handler('click', _toggle)
         return card
 
-    def _load_thread_entries(self, thread_id, entries_panel):
+    def _load_thread_entries(self, thread_id, entries_panel, t_state=None):
         entries_panel.clear()
         entries_panel.add_component(Label(text='Loading entries\u2026', role='body', font_size=13))
         try:
             with anvil.server.no_loading_indicator:
                 entries = anvil.server.call('get_thread_entries', thread_id)
             entries_panel.clear()
-            if not entries:
-                entries_panel.add_component(
-                    Label(text='No entries yet.', role='body', font_size=13)
-                )
-                return
-            for e in entries:
-                entry_type = e.get('entry_type') or 'annotation'
-                icon = _ENTRY_ICONS.get(entry_type, '\u2022')
-                content = e.get('content') or ''
-                if len(content) > 600:
-                    content = content[:600] + ' [truncated]'
-                source = e.get('source') or ''
-                created = e.get('created_at') or ''
 
+            # \u2500\u2500 Header: question + state \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            td = t_state[0] if t_state else {}
+            question = td.get('question') or ''
+            state = td.get('state') or 'active'
+            if question:
+                entries_panel.add_component(Label(text=question, role='body', font_size=14, bold=True))
+            entries_panel.add_component(Label(
+                text=_STATE_BADGE.get(state, state), role='body', font_size=13
+            ))
+
+            # \u2500\u2500 Standing summary: first paragraph of most recent analysis \u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            analyses = [e for e in entries if (e.get('entry_type') or '') == 'analysis']
+            if analyses:
+                raw = analyses[-1].get('content') or ''
+                bp = raw.find('\n\n')
+                summary = raw[:bp] if 0 < bp <= 300 else raw[:300]
+                if summary:
+                    entries_panel.add_component(Label(
+                        text='Standing summary', role='body', font_size=12, bold=True
+                    ))
+                    entries_panel.add_component(Label(text=summary, role='body', font_size=13))
+
+            entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
+
+            # \u2500\u2500 Main content: annotation, gather, analysis, conclusion \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            content_entries = [e for e in entries
+                               if (e.get('entry_type') or 'annotation') != 'state_change']
+            if content_entries:
+                for e in content_entries:
+                    entry_type = e.get('entry_type') or 'annotation'
+                    icon = _ENTRY_ICONS.get(entry_type, '\u2022')
+                    content = e.get('content') or ''
+                    if len(content) > 600:
+                        content = content[:600] + ' [truncated]'
+                    source = e.get('source') or ''
+                    created = e.get('created_at') or ''
+                    row = FlowPanel(spacing_above='none', spacing_below='none')
+                    row.add_component(Label(text=icon, role='body', font_size=13))
+                    row.add_component(Label(text=f'  {entry_type}', role='body', font_size=12))
+                    row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                    entries_panel.add_component(row)
+                    entries_panel.add_component(Label(text=content, role='body', font_size=13))
+                    if source:
+                        entries_panel.add_component(Label(text=source, role='body', font_size=12))
+                    entries_panel.add_component(Label(text='\u2015' * 15, role='body', font_size=11))
+            else:
+                entries_panel.add_component(Label(text='No content entries yet.', role='body', font_size=13))
+
+            # \u2500\u2500 Sub-questions placeholder \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
+            entries_panel.add_component(Label(
+                text='Sub-questions', role='body', font_size=14, bold=True
+            ))
+            entries_panel.add_component(Label(text='(none yet)', role='body', font_size=13))
+
+            # \u2500\u2500 History log toggle \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
+            history_entries = [e for e in entries if (e.get('entry_type') or '') == 'state_change']
+            hist_count = len(history_entries)
+            hist_btn = Button(text=f'\u25b6 History ({hist_count})', role='text-button')
+            entries_panel.add_component(hist_btn)
+
+            hist_panel = ColumnPanel()
+            hist_panel.visible = False
+            for e in history_entries:
+                icon = _ENTRY_ICONS.get('state_change', '\u2022')
+                content = e.get('content') or ''
+                if len(content) > 300:
+                    content = content[:300] + ' [truncated]'
+                created = e.get('created_at') or ''
                 row = FlowPanel(spacing_above='none', spacing_below='none')
                 row.add_component(Label(text=icon, role='body', font_size=13))
-                row.add_component(Label(text=f'  {entry_type}', role='body', font_size=12))
+                row.add_component(Label(text='  state change', role='body', font_size=12))
                 row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
-                entries_panel.add_component(row)
-                entries_panel.add_component(Label(text=content, role='body', font_size=13))
-                if source:
-                    entries_panel.add_component(Label(text=source, role='body', font_size=12))
-                entries_panel.add_component(Label(text='\u2015' * 15, role='body', font_size=11))
+                hist_panel.add_component(row)
+                hist_panel.add_component(Label(text=content, role='body', font_size=13))
+            entries_panel.add_component(hist_panel)
+
+            def _toggle_hist(**kw):
+                hist_panel.visible = not hist_panel.visible
+                hist_btn.text = (f'\u25bc History ({hist_count})' if hist_panel.visible
+                                 else f'\u25b6 History ({hist_count})')
+            hist_btn.set_event_handler('click', _toggle_hist)
+
         except Exception as e:
             entries_panel.clear()
             entries_panel.add_component(Label(text=f'Error: {e}', role='body', font_size=13))
@@ -579,7 +641,7 @@ class Form1(Form1Template):
                                       source='bill', embed=True)
                 ann_ta.text = ''
                 ann_fb.text = '✅ Added'
-                self._load_thread_entries(thread_id, entries_panel)
+                self._load_thread_entries(thread_id, entries_panel, t_state)
             except Exception as e:
                 ann_fb.text = f'❌ {e}'
         ann_btn.set_event_handler('click', _annotate)
@@ -613,7 +675,7 @@ class Form1(Form1Template):
                 t_state[0] = thread
                 badge_lbl.text = f'  {_STATE_BADGE.get(new_state, new_state)}'
                 state_fb.text = '✅ Updated'
-                self._load_thread_entries(thread_id, entries_panel)
+                self._load_thread_entries(thread_id, entries_panel, t_state)
             except Exception as e:
                 state_fb.text = f'❌ {e}'
         state_upd_btn.set_event_handler('click', _update_state)
@@ -644,7 +706,7 @@ class Form1(Form1Template):
                             thread = anvil.server.call('wire_thread_agent', thread_id, None)
                         t_state[0] = thread
                         meta_lbl.text = f'no agent wired  ·  last active {_rel_time(t_state[0].get("last_activity_at",""))}'
-                        self._load_thread_entries(thread_id, entries_panel)
+                        self._load_thread_entries(thread_id, entries_panel, t_state)
                         self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
                     except Exception as e:
                         wire_fb.text = f'❌ {e}'
@@ -658,7 +720,7 @@ class Form1(Form1Template):
                         thread = anvil.server.call('wire_thread_agent', thread_id, agent_name)
                     t_state[0] = thread
                     meta_lbl.text = f'{agent_name}  ·  last active {_rel_time(t_state[0].get("last_activity_at",""))}'
-                    self._load_thread_entries(thread_id, entries_panel)
+                    self._load_thread_entries(thread_id, entries_panel, t_state)
                     self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
                 except Exception as e:
                     wire_fb.text = f'❌ {e}'
@@ -688,7 +750,7 @@ class Form1(Form1Template):
                     with anvil.server.no_loading_indicator:
                         anvil.server.call('trigger_thread_gather', thread_id)
                     gather_fb.text = '✅ Triggered'
-                    self._load_thread_entries(thread_id, entries_panel)
+                    self._load_thread_entries(thread_id, entries_panel, t_state)
                 except Exception as e:
                     gather_fb.text = f'❌ {e}'
                 finally:
@@ -756,7 +818,7 @@ class Form1(Form1Template):
                                       source='desktop_claude', embed=True)
                 analysis_ta.text = ''
                 analysis_fb.text = '✅ Added'
-                self._load_thread_entries(thread_id, entries_panel)
+                self._load_thread_entries(thread_id, entries_panel, t_state)
             except Exception as e:
                 analysis_fb.text = f'❌ {e}'
         analysis_btn.set_event_handler('click', _add_analysis)
