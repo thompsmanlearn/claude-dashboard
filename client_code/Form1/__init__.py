@@ -527,15 +527,23 @@ class Form1(Form1Template):
                 text=_STATE_BADGE.get(state, state), role='body', font_size=13
             ))
 
-            # Standing summary removed: first-paragraph-of-analysis approximates framing,
-            # not conclusions. Restore when entry_type=\'summary\' exists in thread_entries.
-            # See: claudis/anvil-redesign-principles-and-plan.md
+            _summary_candidates = sorted(
+                [e for e in entries if (e.get('entry_type') or '') == 'summary'
+                 and (e.get('content') or '').strip()],
+                key=lambda e: e.get('created_at') or '', reverse=True
+            )
+            top_summary = _summary_candidates[0] if _summary_candidates else None
+            if top_summary:
+                entries_panel.add_component(Label(text='Standing summary', role='title', font_size=13, bold=True))
+                entries_panel.add_component(Label(text=top_summary.get('content') or '', role='body', font_size=13))
 
             entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
 
             # Main content: annotation, gather, analysis, conclusion -- no state_change rows
+            _top_summary_id = top_summary.get('id') if top_summary else None
             content_entries = [e for e in entries
-                               if (e.get('entry_type') or 'annotation') != 'state_change']
+                               if (e.get('entry_type') or 'annotation') != 'state_change'
+                               and e.get('id') != _top_summary_id]
             def _make_screening_handlers(eid, tid, iid, dec, rea, cbtn, obtn, rbtn, rfb, ep, ts):
                 def _confirm(**kw):
                     rfb.text = 'Applying\u2026'
