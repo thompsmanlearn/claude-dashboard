@@ -730,6 +730,30 @@ class Form1(Form1Template):
                         row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
                         entries_panel.add_component(row)
                         entries_panel.add_component(Label(text=content, role='body', font_size=13))
+                        if not spawned:
+                            spawn_btn = Button(text='↗ Spawn as child thread', role='tonal-button', font_size=12)
+                            spawn_fb = Label(text='', role='body', font_size=12)
+                            spawn_row = FlowPanel(spacing_above='none', spacing_below='none')
+                            spawn_row.add_component(spawn_btn)
+                            spawn_row.add_component(spawn_fb)
+                            entries_panel.add_component(spawn_row)
+                            def _make_spawn(eid, tid):
+                                def _spawn(**kw):
+                                    spawn_fb.text = 'Spawning…'
+                                    spawn_btn.enabled = False
+                                    try:
+                                        with anvil.server.no_loading_indicator:
+                                            result = anvil.server.call(
+                                                'spawn_thread_from_sub_question', tid, eid,
+                                                ['Scope', 'Source Preferences', 'Time Bounds']
+                                            )
+                                        spawn_fb.text = f'✅ Thread created: {result.get("title","?")[:40]}'
+                                        self._load_thread_entries(tid, entries_panel, t_state)
+                                    except Exception as ex:
+                                        spawn_fb.text = f'❌ {ex}'
+                                        spawn_btn.enabled = True
+                                return _spawn
+                            spawn_btn.set_event_handler('click', _make_spawn(entry_id, thread_id))
 
                     elif entry_type == 'charter':
                         row.add_component(Label(text='  charter (superseded)', role='body', font_size=12))
@@ -799,6 +823,44 @@ class Form1(Form1Template):
                 hist_btn.text = (f'\u25bc History ({hist_count})' if hist_panel.visible
                                  else f'\u25b6 History ({hist_count})')
             hist_btn.set_event_handler('click', _toggle_hist)
+
+            # Parent / children section (B-100)
+            try:
+                with anvil.server.no_loading_indicator:
+                    family = anvil.server.call('get_thread_family', thread_id)
+                parent_t = family.get('parent')
+                children_t = family.get('children', [])
+                if parent_t or children_t:
+                    entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
+                if parent_t:
+                    entries_panel.add_component(Label(
+                        text=f'\u2191 Parent: {parent_t.get("title","?")[:60]} [{parent_t.get("state","?")}]',
+                        role='body', font_size=13
+                    ))
+                if children_t:
+                    entries_panel.add_component(Label(text=f'\u2193 Child threads ({len(children_t)}):', role='body', font_size=13, bold=True))
+                    for child in children_t:
+                        c_row = FlowPanel(spacing_above='none', spacing_below='none')
+                        c_row.add_component(Label(
+                            text=f'  \u2022 {child.get("title","?")[:60]} [{child.get("state","?")}]',
+                            role='body', font_size=13
+                        ))
+                        if child.get('state') == 'closed':
+                            wb_btn = Button(text='\u2191 Write findings to parent', role='text-button', font_size=12)
+                            def _make_wb(cid):
+                                def _wb(**kw):
+                                    try:
+                                        with anvil.server.no_loading_indicator:
+                                            anvil.server.call('write_child_findings_to_parent', cid)
+                                        self._load_thread_entries(thread_id, entries_panel, t_state)
+                                    except Exception as ex:
+                                        alert(str(ex))
+                                return _wb
+                            wb_btn.set_event_handler('click', _make_wb(child['id']))
+                            c_row.add_component(wb_btn)
+                        entries_panel.add_component(c_row)
+            except Exception:
+                pass
 
         except Exception as e:
             entries_panel.clear()
