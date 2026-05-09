@@ -569,6 +569,17 @@ class Form1(Form1Template):
                 charter_card.add_component(Label(text=f'Added {ts}', role='body', font_size=12))
                 entries_panel.add_component(charter_card)
 
+            # Watch state badge (B-098)
+            td_full = t_state[0] if t_state else {}
+            if td_full.get('watch_enabled'):
+                _wi = td_full.get('watch_interval', 'weekly')
+                _nw = (td_full.get('next_watch_due_at') or '')[:16].replace('T', ' ')
+                _lw = (td_full.get('last_watch_cycle_at') or '')[:16].replace('T', ' ')
+                entries_panel.add_component(Label(
+                    text=f'👁 Watch: {_wi}  ·  last {_lw or "never"}  ·  next {_nw or "?"}',
+                    role='body', font_size=12
+                ))
+
             # Cycle grader verdict badge (B-097)
             try:
                 with anvil.server.no_loading_indicator:
@@ -988,6 +999,35 @@ class Form1(Form1Template):
             except Exception as e:
                 ann_fb.text = f'❌ {e}'
         ann_btn.set_event_handler('click', _annotate)
+
+        # ── Watch state toggle (B-098) ────────────────────────────────────────
+        actions_panel.add_component(Label(text='─' * 10, role='body', font_size=11))
+        _watch_enabled = bool((t_state[0] if t_state else {}).get('watch_enabled', False))
+        _watch_btn = Button(
+            text='👁 Disable Watch' if _watch_enabled else '👁 Enable Watch',
+            role='outlined-button'
+        )
+        _watch_interval_dd = DropDown(items=['daily', 'weekly', 'monthly'],
+                                       selected='weekly', enabled=not _watch_enabled)
+        _watch_fb = Label(text='', role='body', font_size=12)
+        _watch_row = FlowPanel(spacing_above='none', spacing_below='none')
+        _watch_row.add_component(_watch_btn)
+        _watch_row.add_component(_watch_interval_dd)
+        _watch_row.add_component(_watch_fb)
+        actions_panel.add_component(_watch_row)
+
+        def _toggle_watch(**kw):
+            new_enabled = not _watch_enabled
+            interval = _watch_interval_dd.selected or 'weekly'
+            _watch_fb.text = 'Saving…'
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('set_watch_state', thread_id, new_enabled, interval)
+                _watch_fb.text = f'✅ Watch {"enabled" if new_enabled else "disabled"}'
+                self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
+            except Exception as e:
+                _watch_fb.text = f'❌ {e}'
+        _watch_btn.set_event_handler('click', _toggle_watch)
 
         # ── Thread settings drawer (state, agent) ─────────────────────────────
         actions_panel.add_component(Label(text='─' * 10, role='body', font_size=11))
