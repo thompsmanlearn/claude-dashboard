@@ -1078,7 +1078,7 @@ class Form1(Form1Template):
             role='outlined-button'
         )
         _watch_interval_dd = DropDown(items=['daily', 'weekly', 'monthly'],
-                                       selected='weekly', enabled=not _watch_enabled)
+                                       selected_value='weekly', enabled=not _watch_enabled)
         _watch_fb = Label(text='', role='body', font_size=12)
         _watch_row = FlowPanel(spacing_above='none', spacing_below='none')
         _watch_row.add_component(_watch_btn)
@@ -1088,7 +1088,7 @@ class Form1(Form1Template):
 
         def _toggle_watch(**kw):
             new_enabled = not _watch_enabled
-            interval = _watch_interval_dd.selected or 'weekly'
+            interval = _watch_interval_dd.selected_value or 'weekly'
             _watch_fb.text = 'Saving…'
             try:
                 with anvil.server.no_loading_indicator:
