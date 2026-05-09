@@ -157,7 +157,15 @@ class Form1(Form1Template):
         self._fleet_export_btn = Button(text='⬇ Export', role='tonal-button')
         self._fleet_export_btn.set_event_handler('click', self._fleet_export_clicked)
         _fleet_hdr.add_component(self._fleet_export_btn)
+        self._cmt_export_btn = Button(text='✏️ Comment work', role='outlined-button')
+        self._cmt_export_fb = Label(text='', role='body', font_size=13)
+        self._cmt_export_btn.set_event_handler('click', self._export_comment_work_clicked)
+        _fleet_hdr.add_component(self._cmt_export_btn)
         self._fleet_panel.add_component(_fleet_hdr)
+        self._cmt_export_panel = ColumnPanel()
+        self._cmt_export_panel.visible = False
+        self._fleet_panel.add_component(self._cmt_export_panel)
+        self._fleet_panel.add_component(self._cmt_export_fb)
         self._fleet_export_fb = Label(text='', role='body', font_size=14)
         self._fleet_panel.add_component(self._fleet_export_fb)
         self._fleet_export_panel = ColumnPanel()
@@ -1237,6 +1245,12 @@ class Form1(Form1Template):
             agents = anvil.server.call('get_agent_fleet')
             self._agents_lbl.text = f'Agent Fleet ({len(agents)})'
 
+            # Load comment-driven activity for indicators (B-114)
+            try:
+                cmt_activity = anvil.server.call('get_comment_driven_activity')
+            except Exception:
+                cmt_activity = {}
+
             groups = {}
             for a in agents:
                 groups.setdefault(a.get('status', 'retired'), []).append(a)
@@ -1268,12 +1282,12 @@ class Form1(Form1Template):
                 grp_btn.set_event_handler('click', _make_grp_toggle(grp_body, grp_btn))
 
                 for agent in group_agents:
-                    grp_body.add_component(self._build_agent_card(agent))
+                    grp_body.add_component(self._build_agent_card(agent, cmt_activity))
 
         except Exception as e:
             self._agents_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
 
-    def _build_agent_card(self, agent):
+    def _build_agent_card(self, agent, cmt_activity=None):
         agent_name = agent.get('agent_name', '')
         display_name = agent.get('display_name') or agent_name
         description = agent.get('description') or ''
@@ -1309,6 +1323,14 @@ class Form1(Form1Template):
         if updated_at:
             meta += f'  |  Updated: {updated_at}'
         detail.add_component(Label(text=meta, role='body', font_size=16))
+
+        # Comment-driven modification indicator (B-114)
+        if cmt_activity and agent_name in cmt_activity:
+            cmt_info = cmt_activity[agent_name]
+            detail.add_component(Label(
+                text=f'\u270f\ufe0f Modified {cmt_info.get("date", "?")} from comment \u2192 {cmt_info.get("card_id", "?")}',
+                role='body', font_size=13, italic=True,
+            ))
 
         fb_label = Label(text='', role='body', font_size=16)
         action_row = FlowPanel(spacing_above='none', spacing_below='none')
@@ -3047,6 +3069,20 @@ class Form1(Form1Template):
 
     def _fleet_export_clicked(self, **event_args):
         self._run_export('get_fleet_bundle', self._fleet_export_fb, self._fleet_export_panel)
+
+    def _export_comment_work_clicked(self, **event_args):
+        self._cmt_export_fb.text = 'Loading...'
+        self._cmt_export_panel.visible = False
+        try:
+            result = anvil.server.call('export_comment_driven_results')
+            markdown = result.get('markdown', '')
+            count = result.get('count', 0)
+            self._cmt_export_fb.text = f'{count} item(s) — copy from below'
+            self._cmt_export_panel.clear()
+            self._cmt_export_panel.add_component(TextArea(text=markdown, height=300, enabled=True))
+            self._cmt_export_panel.visible = True
+        except Exception as e:
+            self._cmt_export_fb.text = f'❌ {e}'
 
     def _sessions_export_clicked(self, **event_args):
         self._run_export('get_sessions_bundle', self._sessions_export_fb, self._sessions_export_panel)
