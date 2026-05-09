@@ -1330,25 +1330,25 @@ class Form1(Form1Template):
             tog_btn.set_event_handler('click', _make_toggle(agent_name, new_status, tog_btn, fb_label))
             action_row.add_component(tog_btn)
 
-        thumb_up = Button(text='\U0001f44d', role='outlined-button')
-        thumb_down = Button(text='\U0001f44e', role='outlined-button')
         comment_box = TextBox(placeholder='Comment', width=160)
+        comment_btn = Button(text='Comment', role='outlined-button')
 
-        def _make_feedback(a_name, rating, lbl):
+        def _submit_comment(a_name, lbl):
             def _f(**kw):
+                content = (comment_box.text or '').strip()
+                if not content:
+                    return
                 try:
-                    anvil.server.call('submit_agent_feedback', a_name, rating, comment_box.text or None)
-                    lbl.text = '\u2705 Thanks!'
+                    anvil.server.call('submit_agent_feedback_v2', 'agent', a_name, content)
+                    lbl.text = '\u2705 Saved'
                     comment_box.text = ''
                 except Exception as ex:
                     lbl.text = f'\u274c {ex}'
             return _f
 
-        thumb_up.set_event_handler('click', _make_feedback(agent_name, 1, fb_label))
-        thumb_down.set_event_handler('click', _make_feedback(agent_name, -1, fb_label))
-        action_row.add_component(thumb_up)
-        action_row.add_component(thumb_down)
+        comment_btn.set_event_handler('click', _submit_comment(agent_name, fb_label))
         action_row.add_component(comment_box)
+        action_row.add_component(comment_btn)
         detail.add_component(action_row)
 
         if webhook_url and status == 'active':
