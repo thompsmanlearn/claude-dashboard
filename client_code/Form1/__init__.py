@@ -82,6 +82,7 @@ class Form1(Form1Template):
         self._research_articles = []
         self._threads_loaded = False
         self._threads_state_filter = 'active'
+        self._grader_loaded = False
         self._build_layout()
         self.refresh_data()
 
@@ -125,6 +126,7 @@ class Form1(Form1Template):
         self._threads_tab_btn = Button(text='Threads', role='tonal-button')
         self._skills_tab_btn = Button(text='Skills', role='tonal-button')
         self._artifacts_tab_btn = Button(text='Artifacts', role='tonal-button')
+        self._grader_tab_btn = Button(text='Grader', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
         self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
@@ -133,6 +135,7 @@ class Form1(Form1Template):
         self._threads_tab_btn.set_event_handler('click', self._show_threads_tab)
         self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
         self._artifacts_tab_btn.set_event_handler('click', self._show_artifacts_tab)
+        self._grader_tab_btn.set_event_handler('click', self._show_grader_tab)
         tab_row.add_component(self._fleet_tab_btn)
         tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._lessons_tab_btn)
@@ -141,6 +144,7 @@ class Form1(Form1Template):
         tab_row.add_component(self._threads_tab_btn)
         tab_row.add_component(self._skills_tab_btn)
         tab_row.add_component(self._artifacts_tab_btn)
+        tab_row.add_component(self._grader_tab_btn)
         self.content_panel.add_component(tab_row)
 
         # Fleet panel (default visible)
@@ -210,6 +214,12 @@ class Form1(Form1Template):
         self._threads_panel.visible = False
         self._build_threads_layout()
         self.content_panel.add_component(self._threads_panel)
+
+        # Grader panel (hidden by default)
+        self._grader_panel = ColumnPanel()
+        self._grader_panel.visible = False
+        self._build_grader_layout()
+        self.content_panel.add_component(self._grader_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -307,6 +317,7 @@ class Form1(Form1Template):
             'threads': self._threads_panel,
             'skills': self._skills_panel,
             'artifacts': self._artifacts_panel,
+            'grader': self._grader_panel,
         }
         btns = {
             'fleet': self._fleet_tab_btn,
@@ -317,6 +328,7 @@ class Form1(Form1Template):
             'threads': self._threads_tab_btn,
             'skills': self._skills_tab_btn,
             'artifacts': self._artifacts_tab_btn,
+            'grader': self._grader_tab_btn,
         }
         for name, panel in panels.items():
             panel.visible = (name == active)
@@ -365,6 +377,12 @@ class Form1(Form1Template):
         if not self._threads_loaded:
             self._load_threads()
             self._threads_loaded = True
+
+    def _show_grader_tab(self, **event_args):
+        self._set_tab('grader')
+        if not self._grader_loaded:
+            self._load_grader_reviews()
+            self._grader_loaded = True
 
     # ── Threads tab ───────────────────────────────────────────────────────────
 
@@ -2592,6 +2610,92 @@ class Form1(Form1Template):
         return card
 
     # ── Skills tab ───────────────────────────────────────────────────────────
+
+    # ── Grader tab ────────────────────────────────────────────────────────────
+
+    def _build_grader_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text='Grader Reviews', role='title', bold=True, font_size=20))
+        ref_btn = Button(text='↻', role='text-button')
+        ref_btn.set_event_handler('click', lambda **kw: self._reload_grader())
+        hdr.add_component(ref_btn)
+        self._grader_panel.add_component(hdr)
+        self._grader_feedback = Label(text='', role='body', font_size=14)
+        self._grader_panel.add_component(self._grader_feedback)
+        self._grader_body = ColumnPanel()
+        self._grader_panel.add_component(self._grader_body)
+
+    def _reload_grader(self):
+        self._grader_loaded = False
+        self._grader_body.clear()
+        self._load_grader_reviews()
+        self._grader_loaded = True
+
+    def _load_grader_reviews(self):
+        self._grader_feedback.text = 'Loading…'
+        try:
+            with anvil.server.no_loading_indicator:
+                reviews = anvil.server.call('get_grader_reviews', 30, False)
+        except Exception as e:
+            self._grader_feedback.text = f'❌ Error: {e}'
+            return
+        self._grader_body.clear()
+        if not reviews:
+            self._grader_feedback.text = 'No grader reviews yet.'
+            return
+        self._grader_feedback.text = f'{len(reviews)} reviews'
+        verdict_icons = {'pass': '✅', 'pause': '⚠️', 'fail': '❌'}
+        for rv in reviews:
+            card = ColumnPanel(role='outlined-card')
+            icon = verdict_icons.get(rv.get('verdict', ''), '❓')
+            override = rv.get('bill_override') or ''
+            reviewed = rv.get('reviewed_by_bill', False)
+            hdr_row = FlowPanel(spacing_above='none', spacing_below='none')
+            hdr_row.add_component(Label(
+                text=f"{icon} {rv.get('card_id', '?')} — {rv.get('verdict', '?').upper()}",
+                role='title', bold=True, font_size=16,
+            ))
+            if reviewed:
+                hdr_row.add_component(Label(text=' ✓ Bill reviewed', role='body', font_size=13))
+            card.add_component(hdr_row)
+            ts = (rv.get('created_at') or '')[:16].replace('T', ' ')
+            card.add_component(Label(text=f"Graded: {ts}", role='body', font_size=13))
+            if rv.get('rationale'):
+                card.add_component(Label(text=rv['rationale'], role='body', font_size=14))
+            criteria = rv.get('criteria_results') or []
+            if criteria:
+                for c in criteria:
+                    met = c.get('met', False)
+                    badge = '✅' if met else '❌'
+                    crit_text = f"{badge} {c.get('criterion', '')}"
+                    ev = c.get('evidence', '')
+                    card.add_component(Label(text=crit_text, role='body', font_size=13, bold=True))
+                    if ev:
+                        card.add_component(Label(text=f"  {ev}", role='body', font_size=13))
+            if override:
+                card.add_component(Label(text=f'\U0001f4dd Override: {override}', role='body', font_size=13))
+            # Override action
+            if not reviewed:
+                override_row = FlowPanel(spacing_above='small', spacing_below='none')
+                for ov in ('pass', 'pause', 'fail'):
+                    btn = Button(text=f'Override → {ov}', role='tonal-button', font_size=12)
+                    review_id = rv.get('id', '')
+                    card_id_lbl = rv.get('card_id', '')
+                    def _make_override_handler(rid, cid, v):
+                        def handler(**kw):
+                            reason = anvil.js.window.prompt(f'Reason for overriding {cid} to {v}?', '')
+                            if reason is None:
+                                return
+                            try:
+                                anvil.server.call('bill_override_grader_review', rid, v, reason)
+                                self._reload_grader()
+                            except Exception as ex:
+                                alert(str(ex))
+                        return handler
+                    btn.set_event_handler('click', _make_override_handler(review_id, card_id_lbl, ov))
+                    override_row.add_component(btn)
+                card.add_component(override_row)
+            self._grader_body.add_component(card)
 
     def _build_skills_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
