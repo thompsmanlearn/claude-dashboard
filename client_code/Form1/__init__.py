@@ -2884,6 +2884,40 @@ class Form1(Form1Template):
                     btn.set_event_handler('click', _make_override_handler(review_id, card_id_lbl, ov))
                     override_row.add_component(btn)
                 card.add_component(override_row)
+
+            # ── Copy for Opus button (B-102) ──────────────────────────────────
+            export_row = FlowPanel(spacing_above='small', spacing_below='none')
+            export_btn = Button(text='📋 Copy for Opus', role='text-button', font_size=12)
+            export_fb = Label(text='', role='body', font_size=12)
+            export_ta = TextArea(height=120, visible=False)
+            export_row.add_component(export_btn)
+            export_row.add_component(export_fb)
+            card.add_component(export_row)
+            card.add_component(export_ta)
+
+            def _make_export_handler(rid):
+                def _export(**kw):
+                    export_fb.text = 'Fetching…'
+                    export_btn.enabled = False
+                    try:
+                        with anvil.server.no_loading_indicator:
+                            result = anvil.server.call('export_grader_review', rid)
+                        md = result.get('markdown', '')
+                        # Try clipboard, fall back to text area
+                        try:
+                            anvil.js.window.navigator.clipboard.writeText(md)
+                            export_fb.text = '✅ Copied to clipboard'
+                        except Exception:
+                            export_ta.text = md
+                            export_ta.visible = True
+                            export_fb.text = '📋 Select-all and copy from the text area below'
+                    except Exception as ex:
+                        export_fb.text = f'❌ {ex}'
+                    finally:
+                        export_btn.enabled = True
+                return _export
+            export_btn.set_event_handler('click', _make_export_handler(review_id))
+
             self._grader_body.add_component(card)
 
     def _build_skills_layout(self):
