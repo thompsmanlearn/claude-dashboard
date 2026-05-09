@@ -23,6 +23,9 @@ _ENTRY_ICONS = {
     'screening': '\U0001f50e',
     'screening_uncertain': '\u2753',
     'sub_question_candidate': '\U0001f4ac',
+    'charter': '\U0001f4dc',
+    'cycle_metadata': '\U0001f504',
+    'memory_consultation': '\U0001f9e0',
 }
 _STATE_BADGE = {
     'active': '\U0001f7e2 active',
@@ -545,6 +548,27 @@ class Form1(Form1Template):
                 text=_STATE_BADGE.get(state, state), role='body', font_size=13
             ))
 
+            # Charter block \u2014 most recent charter at top
+            _charter_entries = sorted(
+                [e for e in entries if (e.get('entry_type') or '') == 'charter'],
+                key=lambda e: e.get('created_at') or '', reverse=True
+            )
+            _active_charter = _charter_entries[0] if _charter_entries else None
+            if _active_charter:
+                charter_card = ColumnPanel(role='outlined-card')
+                charter_card.add_component(Label(text='\U0001f4dc Research Charter', role='title', bold=True, font_size=14))
+                charter_content = _active_charter.get('content') or ''
+                # Render section headers as bold labels
+                for line in charter_content.splitlines():
+                    line = line.rstrip()
+                    if line.startswith('## ') or line.startswith('### '):
+                        charter_card.add_component(Label(text=line.lstrip('#').strip(), role='body', font_size=13, bold=True))
+                    elif line:
+                        charter_card.add_component(Label(text=line, role='body', font_size=13))
+                ts = (_active_charter.get('created_at') or '')[:16].replace('T', ' ')
+                charter_card.add_component(Label(text=f'Added {ts}', role='body', font_size=12))
+                entries_panel.add_component(charter_card)
+
             _summary_candidates = sorted(
                 [e for e in entries if (e.get('entry_type') or '') == 'summary'
                  and (e.get('content') or '').strip()],
@@ -557,11 +581,13 @@ class Form1(Form1Template):
 
             entries_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=11))
 
-            # Main content: annotation, gather, analysis, conclusion -- no state_change rows
+            # Main content: no state_change, no active charter (shown at top already)
             _top_summary_id = top_summary.get('id') if top_summary else None
+            _active_charter_id = _active_charter.get('id') if _active_charter else None
             content_entries = [e for e in entries
                                if (e.get('entry_type') or 'annotation') != 'state_change'
-                               and e.get('id') != _top_summary_id]
+                               and e.get('id') != _top_summary_id
+                               and e.get('id') != _active_charter_id]
             def _make_screening_handlers(eid, tid, iid, dec, rea, cbtn, obtn, rbtn, rfb, ep, ts):
                 def _confirm(**kw):
                     rfb.text = 'Applying\u2026'
@@ -665,10 +691,35 @@ class Form1(Form1Template):
                             )
 
                     elif entry_type == 'sub_question_candidate':
-                        row.add_component(Label(text='  sub-question candidate', role='body', font_size=12))
+                        spawned = isinstance(metadata, dict) and metadata.get('spawned', False)
+                        label = '  sub-question (spawned)' if spawned else '  sub-question candidate'
+                        row.add_component(Label(text=label, role='body', font_size=12))
                         row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
                         entries_panel.add_component(row)
                         entries_panel.add_component(Label(text=content, role='body', font_size=13))
+
+                    elif entry_type == 'charter':
+                        row.add_component(Label(text='  charter (superseded)', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=content[:200] + '…', role='body', font_size=13))
+
+                    elif entry_type == 'cycle_metadata':
+                        meta_text = ''
+                        if isinstance(metadata, dict):
+                            verdict = metadata.get('grader_verdict', '')
+                            cycle_n = metadata.get('cycle_number', '')
+                            outcome = metadata.get('outcome', '')
+                            meta_text = f'Cycle {cycle_n} · {outcome or verdict}'
+                        row.add_component(Label(text=f'  research cycle  {meta_text}', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+
+                    elif entry_type == 'memory_consultation':
+                        row.add_component(Label(text='  🧠 What we already know', role='body', font_size=12, bold=True))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=content[:600], role='body', font_size=13))
 
                     else:
                         display = content if len(content) <= 600 else content[:600] + ' [truncated]'
