@@ -569,6 +569,28 @@ class Form1(Form1Template):
                 charter_card.add_component(Label(text=f'Added {ts}', role='body', font_size=12))
                 entries_panel.add_component(charter_card)
 
+            # Cycle grader verdict badge (B-097)
+            try:
+                with anvil.server.no_loading_indicator:
+                    cycle_verdict = anvil.server.call('get_latest_cycle_verdict', thread_id)
+                if cycle_verdict:
+                    _cv = cycle_verdict.get('verdict', '')
+                    _cv_icons = {'continue': '🔄', 'complete': '✅', 'pause': '⚠️', 'fail': '❌'}
+                    _cv_icon = _cv_icons.get(_cv, '❓')
+                    _cv_ts = (cycle_verdict.get('created_at') or '')[:16].replace('T', ' ')
+                    _cv_row = FlowPanel(spacing_above='none', spacing_below='none')
+                    _cv_row.add_component(Label(
+                        text=f'{_cv_icon} Cycle grader: {_cv.upper()}  ·  {_cv_ts}',
+                        role='body', font_size=13, bold=True
+                    ))
+                    entries_panel.add_component(_cv_row)
+                    if cycle_verdict.get('rationale'):
+                        entries_panel.add_component(Label(
+                            text=cycle_verdict['rationale'][:200], role='body', font_size=13
+                        ))
+            except Exception:
+                pass
+
             _summary_candidates = sorted(
                 [e for e in entries if (e.get('entry_type') or '') == 'summary'
                  and (e.get('content') or '').strip()],
@@ -2670,6 +2692,19 @@ class Form1(Form1Template):
         ref_btn = Button(text='↻', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._reload_grader())
         hdr.add_component(ref_btn)
+        # Filter buttons
+        _filter_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._grader_filter = 'card'
+        def _make_filter(ft):
+            def _handler(**kw):
+                self._grader_filter = ft
+                self._reload_grader()
+            return _handler
+        for ft, lbl in [('card', 'Cards'), ('research_cycle', 'Research Cycles')]:
+            fb = Button(text=lbl, role='tonal-button', font_size=13)
+            fb.set_event_handler('click', _make_filter(ft))
+            _filter_row.add_component(fb)
+        hdr.add_component(_filter_row)
         self._grader_panel.add_component(hdr)
         self._grader_feedback = Label(text='', role='body', font_size=14)
         self._grader_panel.add_component(self._grader_feedback)
@@ -2684,9 +2719,10 @@ class Form1(Form1Template):
 
     def _load_grader_reviews(self):
         self._grader_feedback.text = 'Loading…'
+        review_type = getattr(self, '_grader_filter', 'card')
         try:
             with anvil.server.no_loading_indicator:
-                reviews = anvil.server.call('get_grader_reviews', 30, False)
+                reviews = anvil.server.call('get_grader_reviews_by_type', review_type, 30)
         except Exception as e:
             self._grader_feedback.text = f'❌ Error: {e}'
             return
