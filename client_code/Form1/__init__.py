@@ -26,6 +26,8 @@ _ENTRY_ICONS = {
     'charter': '\U0001f4dc',
     'cycle_metadata': '\U0001f504',
     'memory_consultation': '\U0001f9e0',
+    'finding': '\U0001f4a1',
+    'cycle_summary': '\U0001f4ca',
 }
 _STATE_BADGE = {
     'active': '\U0001f7e2 active',
@@ -785,6 +787,27 @@ class Form1(Form1Template):
                         row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
                         entries_panel.add_component(row)
                         entries_panel.add_component(Label(text=content[:600], role='body', font_size=13))
+
+                    elif entry_type == 'finding':
+                        meta_url = isinstance(metadata, dict) and metadata.get('url', '') or source or ''
+                        meta_title = isinstance(metadata, dict) and metadata.get('title', '') or ''
+                        relevance = isinstance(metadata, dict) and metadata.get('relevance_note', '') or ''
+                        row.add_component(Label(text='  finding', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        if meta_title:
+                            entries_panel.add_component(Label(text=meta_title, role='body', font_size=13, bold=True))
+                        entries_panel.add_component(Label(text=content[:500], role='body', font_size=13))
+                        if relevance:
+                            entries_panel.add_component(Label(text=f'Why relevant: {relevance}', role='body', font_size=12))
+                        if meta_url:
+                            entries_panel.add_component(Label(text=meta_url, role='body', font_size=12))
+
+                    elif entry_type == 'cycle_summary':
+                        row.add_component(Label(text='  research cycle summary', role='body', font_size=12))
+                        row.add_component(Label(text=f'  {_rel_time(created)}', role='body', font_size=12))
+                        entries_panel.add_component(row)
+                        entries_panel.add_component(Label(text=content[:400], role='body', font_size=13))
 
                     else:
                         display = content if len(content) <= 600 else content[:600] + ' [truncated]'
