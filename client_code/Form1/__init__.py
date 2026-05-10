@@ -1099,6 +1099,99 @@ class Form1(Form1Template):
                 _watch_fb.text = f'❌ {e}'
         _watch_btn.set_event_handler('click', _toggle_watch)
 
+        # ── Charter (B-116) ───────────────────────────────────────────────────
+        actions_panel.add_component(Label(text='─' * 10, role='body', font_size=11))
+        _has_charter = bool((t_state[0] if t_state else {}).get('charter'))
+        if _has_charter:
+            actions_panel.add_component(Label(text='📜 Charter saved', role='body', font_size=13))
+        else:
+            charter_btn = Button(text='📜 Add charter', role='tonal-button')
+            charter_fb = Label(text='', role='body', font_size=12)
+            charter_hdr = FlowPanel(spacing_above='none', spacing_below='none')
+            charter_hdr.add_component(charter_btn)
+            charter_hdr.add_component(charter_fb)
+            actions_panel.add_component(charter_hdr)
+
+            charter_form = ColumnPanel()
+            charter_form.visible = False
+
+            charter_form.add_component(Label(text='Question', role='body', font_size=13, bold=True))
+            cq_tb = TextBox(text=(t_state[0] if t_state else {}).get('question', '') or '')
+            charter_form.add_component(cq_tb)
+
+            charter_form.add_component(Label(text='Scope', role='body', font_size=13, bold=True))
+            scope_ta = TextArea(placeholder='What is in/out of scope…', height=60)
+            charter_form.add_component(scope_ta)
+
+            charter_form.add_component(Label(text='Success Criteria', role='body', font_size=13, bold=True))
+            sc_ta = TextArea(placeholder='When is this research done?', height=80)
+            charter_form.add_component(sc_ta)
+
+            charter_form.add_component(Label(text='Disqualifying Criteria', role='body', font_size=13, bold=True))
+            dc_ta = TextArea(placeholder='What disqualifies a source or finding?', height=80)
+            charter_form.add_component(dc_ta)
+
+            charter_form.add_component(Label(text='Sub-Questions (one per line)', role='body', font_size=13, bold=True))
+            sq_ta = TextArea(placeholder='One sub-question per line…', height=80)
+            charter_form.add_component(sq_ta)
+
+            charter_form.add_component(Label(text='Source Preferences', role='body', font_size=13, bold=True))
+            sp_tb = TextBox(placeholder='e.g. arXiv, peer-reviewed journals…')
+            charter_form.add_component(sp_tb)
+
+            charter_form.add_component(Label(text='Recency Requirement (optional)', role='body', font_size=13, bold=True))
+            rr_tb = TextBox(placeholder='e.g. last 2 years, since 2023…')
+            charter_form.add_component(rr_tb)
+
+            charter_ctrl = FlowPanel(spacing_above='none', spacing_below='none')
+            charter_save_btn = Button(text='Save charter', role='filled-button')
+            charter_cancel_btn = Button(text='Cancel', role='text-button')
+            charter_ctrl.add_component(charter_save_btn)
+            charter_ctrl.add_component(charter_cancel_btn)
+            charter_form.add_component(charter_ctrl)
+
+            actions_panel.add_component(charter_form)
+
+            def _toggle_charter(**kw):
+                charter_form.visible = not charter_form.visible
+                charter_btn.text = '▼ Add charter' if charter_form.visible else '📜 Add charter'
+            charter_btn.set_event_handler('click', _toggle_charter)
+
+            def _cancel_charter(**kw):
+                charter_form.visible = False
+                charter_btn.text = '📜 Add charter'
+            charter_cancel_btn.set_event_handler('click', _cancel_charter)
+
+            def _save_charter(**kw):
+                q = (cq_tb.text or '').strip()
+                sc = (sc_ta.text or '').strip()
+                if not q or not sc:
+                    charter_fb.text = '⚠️ Question and Success Criteria required'
+                    return
+                charter_fb.text = 'Saving…'
+                charter_save_btn.enabled = False
+                try:
+                    sq_lines = [ln.strip() for ln in (sq_ta.text or '').splitlines() if ln.strip()]
+                    charter_d = {
+                        'question': q,
+                        'scope': (scope_ta.text or '').strip(),
+                        'success_criteria': sc,
+                        'disqualifying_criteria': (dc_ta.text or '').strip(),
+                        'sub_questions': sq_lines,
+                        'source_preferences': (sp_tb.text or '').strip(),
+                        'recency_requirement': (rr_tb.text or '').strip(),
+                    }
+                    with anvil.server.no_loading_indicator:
+                        thread = anvil.server.call('save_charter', thread_id, charter_d)
+                    t_state[0] = thread
+                    charter_fb.text = '✅ Charter saved'
+                    self._load_thread_entries(thread_id, entries_panel, t_state)
+                    self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
+                except Exception as e:
+                    charter_fb.text = f'❌ {e}'
+                    charter_save_btn.enabled = True
+            charter_save_btn.set_event_handler('click', _save_charter)
+
         # ── Thread settings drawer (state, agent) ─────────────────────────────
         actions_panel.add_component(Label(text='─' * 10, role='body', font_size=11))
         settings_btn = Button(text='▶ Thread settings (state, agent)', role='text-button')
