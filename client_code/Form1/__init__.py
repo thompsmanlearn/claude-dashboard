@@ -88,6 +88,7 @@ class Form1(Form1Template):
         self._threads_loaded = False
         self._threads_state_filter = 'active'
         self._grader_loaded = False
+        self._workspace_loaded = False
         self._build_layout()
         self.refresh_data()
 
@@ -132,6 +133,7 @@ class Form1(Form1Template):
         self._skills_tab_btn = Button(text='Skills', role='tonal-button')
         self._artifacts_tab_btn = Button(text='Artifacts', role='tonal-button')
         self._grader_tab_btn = Button(text='Grader', role='tonal-button')
+        self._workspace_tab_btn = Button(text='Workspace', role='tonal-button')
         self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
         self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
@@ -141,6 +143,7 @@ class Form1(Form1Template):
         self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
         self._artifacts_tab_btn.set_event_handler('click', self._show_artifacts_tab)
         self._grader_tab_btn.set_event_handler('click', self._show_grader_tab)
+        self._workspace_tab_btn.set_event_handler('click', self._show_workspace_tab)
         tab_row.add_component(self._fleet_tab_btn)
         tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._lessons_tab_btn)
@@ -150,6 +153,7 @@ class Form1(Form1Template):
         tab_row.add_component(self._skills_tab_btn)
         tab_row.add_component(self._artifacts_tab_btn)
         tab_row.add_component(self._grader_tab_btn)
+        tab_row.add_component(self._workspace_tab_btn)
         self.content_panel.add_component(tab_row)
 
         # Fleet panel (default visible)
@@ -233,6 +237,12 @@ class Form1(Form1Template):
         self._grader_panel.visible = False
         self._build_grader_layout()
         self.content_panel.add_component(self._grader_panel)
+
+        # Workspace panel (hidden by default)
+        self._workspace_panel = ColumnPanel()
+        self._workspace_panel.visible = False
+        self._build_workspace_layout()
+        self.content_panel.add_component(self._workspace_panel)
 
     def _build_controls(self, panel):
         panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
@@ -331,6 +341,7 @@ class Form1(Form1Template):
             'skills': self._skills_panel,
             'artifacts': self._artifacts_panel,
             'grader': self._grader_panel,
+            'workspace': self._workspace_panel,
         }
         btns = {
             'fleet': self._fleet_tab_btn,
@@ -342,6 +353,7 @@ class Form1(Form1Template):
             'skills': self._skills_tab_btn,
             'artifacts': self._artifacts_tab_btn,
             'grader': self._grader_tab_btn,
+            'workspace': self._workspace_tab_btn,
         }
         for name, panel in panels.items():
             panel.visible = (name == active)
@@ -396,6 +408,12 @@ class Form1(Form1Template):
         if not self._grader_loaded:
             self._load_grader_reviews()
             self._grader_loaded = True
+
+    def _show_workspace_tab(self, **event_args):
+        self._set_tab('workspace')
+        if not self._workspace_loaded:
+            self._load_workspace_notes()
+            self._workspace_loaded = True
 
     # ── Threads tab ───────────────────────────────────────────────────────────
 
@@ -3301,3 +3319,83 @@ class Form1(Form1Template):
 
     def _refresh_clicked(self, **event_args):
         self.refresh_data()
+
+    # ── Workspace tab (B-120) ─────────────────────────────────────────────────
+
+    def _build_workspace_layout(self):
+        hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        hdr.add_component(Label(text="Workspace", role='title', bold=True, font_size=20))
+        self._workspace_export_btn = Button(text='⬇ Export working bundle', role='tonal-button')
+        self._workspace_export_btn.set_event_handler('click', self._workspace_export_clicked)
+        hdr.add_component(self._workspace_export_btn)
+        self._workspace_panel.add_component(hdr)
+
+        self._workspace_export_fb = Label(text='', role='body', font_size=13)
+        self._workspace_panel.add_component(self._workspace_export_fb)
+        self._workspace_export_fallback = ColumnPanel()
+        self._workspace_export_fallback.visible = False
+        self._workspace_panel.add_component(self._workspace_export_fallback)
+
+        note_row = FlowPanel(spacing_above='small', spacing_below='none')
+        self._workspace_note_input = TextArea(placeholder="What's on your mind?", height=80)
+        self._workspace_add_btn = Button(text='Add note', role='filled-button')
+        self._workspace_add_fb = Label(text='', role='body', font_size=13)
+        self._workspace_add_btn.set_event_handler('click', self._workspace_add_note_clicked)
+        note_row.add_component(self._workspace_note_input)
+        note_row.add_component(self._workspace_add_btn)
+        self._workspace_panel.add_component(note_row)
+        self._workspace_panel.add_component(self._workspace_add_fb)
+
+        self._workspace_panel.add_component(Label(text='Unaddressed notes:', role='body', bold=True, font_size=14))
+        self._workspace_notes_panel = ColumnPanel()
+        self._workspace_panel.add_component(self._workspace_notes_panel)
+
+    def _load_workspace_notes(self):
+        self._workspace_notes_panel.clear()
+        try:
+            with anvil.server.no_loading_indicator:
+                notes = anvil.server.call('get_bill_notes')
+        except Exception as e:
+            self._workspace_notes_panel.add_component(Label(text=f'❌ {e}', role='body', font_size=13))
+            return
+        if not notes:
+            self._workspace_notes_panel.add_component(Label(text='No unaddressed notes.', role='body', font_size=13))
+            return
+        for note in notes:
+            self._workspace_notes_panel.add_component(self._make_note_row(note))
+
+    def _make_note_row(self, note):
+        row = FlowPanel(spacing_above='none', spacing_below='none')
+        ts = (note.get('created_at') or '')[:10]
+        row.add_component(Label(text=f"[{ts}] {note.get('content','')}", role='body', font_size=13))
+        btn = Button(text='Mark addressed', role='outlined-button')
+        note_id = note.get('id')
+        def _mark(note_id=note_id, row=row, **kw):
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('mark_bill_note_addressed', note_id)
+                row.visible = False
+            except Exception as e:
+                self._workspace_add_fb.text = f'❌ {e}'
+        btn.set_event_handler('click', _mark)
+        row.add_component(btn)
+        return row
+
+    def _workspace_add_note_clicked(self, **event_args):
+        text = self._workspace_note_input.text or ''
+        if not text.strip():
+            self._workspace_add_fb.text = '❌ Note is empty.'
+            return
+        self._workspace_add_fb.text = 'Saving...'
+        try:
+            anvil.server.call('add_bill_note', text.strip())
+            self._workspace_note_input.text = ''
+            self._workspace_add_fb.text = '✅ Saved.'
+            self._workspace_loaded = False
+            self._load_workspace_notes()
+            self._workspace_loaded = True
+        except Exception as e:
+            self._workspace_add_fb.text = f'❌ {e}'
+
+    def _workspace_export_clicked(self, **event_args):
+        self._run_export('get_working_bundle', self._workspace_export_fb, self._workspace_export_fallback)
