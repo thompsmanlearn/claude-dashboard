@@ -1230,9 +1230,21 @@ class Form1(Form1Template):
                         'recency_requirement': (rr_tb.text or '').strip(),
                     }
                     with anvil.server.no_loading_indicator:
-                        thread = anvil.server.call('save_charter', thread_id, charter_d)
-                    t_state[0] = thread
-                    charter_fb.text = '✅ Charter saved'
+                        result = anvil.server.call('save_charter', thread_id, charter_d)
+                    auto_wire = result.pop('_auto_wire', None) if isinstance(result, dict) else None
+                    t_state[0] = result
+                    aw_status = (auto_wire or {}).get('status', '')
+                    if aw_status == 'wired':
+                        aw_agent = auto_wire.get('agent', '')
+                        aw_pct = int(round(auto_wire.get('confidence', 0) * 100))
+                        t_state[0]['bound_agent'] = aw_agent
+                        charter_fb.text = f'✅ Charter saved · 🔗 Auto-wired {aw_agent} ({aw_pct}%)'
+                    elif aw_status == 'build_request_queued':
+                        charter_fb.text = '✅ Charter saved · No matching agent found — build request queued'
+                    elif aw_status == 'already_wired':
+                        charter_fb.text = f'✅ Charter saved · Agent already wired'
+                    else:
+                        charter_fb.text = '✅ Charter saved'
                     self._load_thread_entries(thread_id, entries_panel, t_state)
                     self._build_thread_actions(thread_id, t_state, entries_panel, actions_panel, badge_lbl, meta_lbl)
                 except Exception as e:
