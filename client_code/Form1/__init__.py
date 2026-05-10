@@ -914,28 +914,53 @@ class Form1(Form1Template):
         actions_panel.add_component(Label(text='─' * 20, role='body', font_size=11))
 
         # ── Gather ────────────────────────────────────────────────────────────
-        gather_btn = Button(text='▶ Gather', role='filled-button',
-                            enabled=bool(bound_agent and bound_has_webhook))
-        gather_fb = Label(
-            text='' if (bound_agent and bound_has_webhook) else 'Wire an agent with a webhook to enable',
-            role='body', font_size=12,
-        )
-        actions_panel.add_component(gather_btn)
-        actions_panel.add_component(gather_fb)
+        has_charter = bool(t_state[0].get('charter'))
+        if has_charter and bound_agent and bound_has_webhook:
+            gather_btn = Button(text='▶ Gather', role='filled-button')
+            gather_fb = Label(text='', role='body', font_size=12)
+            actions_panel.add_component(gather_btn)
+            actions_panel.add_component(gather_fb)
 
-        def _gather(**kw):
-            gather_fb.text = 'Triggering…'
-            gather_btn.enabled = False
-            try:
-                with anvil.server.no_loading_indicator:
-                    anvil.server.call('trigger_thread_gather', thread_id)
-                gather_fb.text = '✅ Triggered'
-                self._load_thread_entries(thread_id, entries_panel, t_state)
-            except Exception as e:
-                gather_fb.text = f'❌ {e}'
-            finally:
-                gather_btn.enabled = True
-        gather_btn.set_event_handler('click', _gather)
+            def _gather(**kw):
+                gather_fb.text = 'Gathering…'
+                gather_btn.enabled = False
+                try:
+                    with anvil.server.no_loading_indicator:
+                        trigger_entry = anvil.server.call('trigger_thread_gather', thread_id)
+                    trigger_time = (trigger_entry or {}).get('created_at', '')
+                    gather_fb.text = '⏳ Gathering…'
+                    self._load_thread_entries(thread_id, entries_panel, t_state)
+                    _tick = [0]
+                    tmr = Timer(interval=15)
+
+                    def _on_tick(**kw):
+                        _tick[0] += 1
+                        try:
+                            with anvil.server.no_loading_indicator:
+                                entries = anvil.server.call('get_thread_entries', thread_id)
+                            done = any(
+                                e.get('entry_type') == 'cycle_summary'
+                                and e.get('created_at', '') > trigger_time
+                                for e in entries
+                            )
+                            if done or _tick[0] >= 8:
+                                tmr.interval = 0
+                                self._load_thread_entries(thread_id, entries_panel, t_state)
+                                gather_fb.text = '✅ Cycle complete' if done else '⚠️ No summary yet — check entries'
+                                gather_btn.enabled = True
+                            else:
+                                gather_fb.text = f'⏳ Gathering… ({_tick[0] * 15}s)'
+                        except Exception:
+                            tmr.interval = 0
+                            gather_btn.enabled = True
+                            gather_fb.text = '⚠️ Poll error'
+
+                    tmr.set_event_handler('tick', _on_tick)
+                    actions_panel.add_component(tmr)
+                except Exception as e:
+                    gather_fb.text = f'❌ {e}'
+                    gather_btn.enabled = True
+            gather_btn.set_event_handler('click', _gather)
 
         # ── Export ────────────────────────────────────────────────────────────
         export_btn = Button(text='⬇ Export thread', role='filled-button')
