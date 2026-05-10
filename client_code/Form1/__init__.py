@@ -3328,6 +3328,9 @@ class Form1(Form1Template):
         self._workspace_export_btn = Button(text='⬇ Export working bundle', role='tonal-button')
         self._workspace_export_btn.set_event_handler('click', self._workspace_export_clicked)
         hdr.add_component(self._workspace_export_btn)
+        self._workspace_audit_export_btn = Button(text='⬇ Export audit bundle', role='tonal-button')
+        self._workspace_audit_export_btn.set_event_handler('click', self._workspace_audit_export_clicked)
+        hdr.add_component(self._workspace_audit_export_btn)
         self._workspace_panel.add_component(hdr)
 
         self._workspace_export_fb = Label(text='', role='body', font_size=13)
@@ -3335,6 +3338,12 @@ class Form1(Form1Template):
         self._workspace_export_fallback = ColumnPanel()
         self._workspace_export_fallback.visible = False
         self._workspace_panel.add_component(self._workspace_export_fallback)
+
+        self._workspace_audit_export_fb = Label(text='', role='body', font_size=13)
+        self._workspace_panel.add_component(self._workspace_audit_export_fb)
+        self._workspace_audit_export_fallback = ColumnPanel()
+        self._workspace_audit_export_fallback.visible = False
+        self._workspace_panel.add_component(self._workspace_audit_export_fallback)
 
         note_row = FlowPanel(spacing_above='small', spacing_below='none')
         self._workspace_note_input = TextArea(placeholder="What's on your mind?", height=80)
@@ -3399,3 +3408,6 @@ class Form1(Form1Template):
 
     def _workspace_export_clicked(self, **event_args):
         self._run_export('get_working_bundle', self._workspace_export_fb, self._workspace_export_fallback)
+
+    def _workspace_audit_export_clicked(self, **event_args):
+        self._run_export('get_audit_bundle', self._workspace_audit_export_fb, self._workspace_audit_export_fallback)
