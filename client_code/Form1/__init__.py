@@ -202,6 +202,7 @@ class Form1(Form1Template):
             placeholder='e.g. "Run: B-032" or free text',
             role='outlined',
             height=60,
+            width='62%',
         )
         dir_row.add_component(self._directive_input)
         dir_btn = Button(text='Write', role='tonal-button')
@@ -251,7 +252,7 @@ class Form1(Form1Template):
 
         # 4. Note input
         note_row = FlowPanel(spacing_above='none', spacing_below='none')
-        self._home_note_input = TextArea(placeholder="What's on your mind?", height=70)
+        self._home_note_input = TextArea(placeholder="What's on your mind?", height=70, width='68%')
         self._home_add_note_btn = Button(text='Add note', role='filled-button')
         self._home_add_note_btn.set_event_handler('click', self._home_add_note_clicked)
         note_row.add_component(self._home_note_input)
