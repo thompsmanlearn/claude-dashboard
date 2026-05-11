@@ -293,6 +293,8 @@ class Form1(Form1Template):
 
         # Actions region
         actions_row = FlowPanel(spacing_above='small', spacing_below='small')
+        self._wp_search_btn = Button(text='Search', role='filled-button', enabled=False)
+        self._wp_search_btn.set_event_handler('click', self._wp_search)
         self._wp_read_btn = Button(text='Read URL', role='filled-button')
         self._wp_read_btn.set_event_handler('click', self._wp_read_url)
         self._wp_copy_btn = Button(text='Copy', role='tonal-button')
@@ -301,7 +303,7 @@ class Form1(Form1Template):
         self._wp_clear_btn.set_event_handler('click', self._wp_clear)
         self._wp_promote_btn = Button(text='Promote to thread', role='tonal-button')
         self._wp_promote_btn.set_event_handler('click', self._wp_show_promote_form)
-        for btn in [self._wp_read_btn, self._wp_copy_btn, self._wp_clear_btn, self._wp_promote_btn]:
+        for btn in [self._wp_search_btn, self._wp_read_btn, self._wp_copy_btn, self._wp_clear_btn, self._wp_promote_btn]:
             actions_row.add_component(btn)
         self._workpad_panel.add_component(actions_row)
 
@@ -3504,6 +3506,7 @@ class Form1(Form1Template):
 
     def _wp_input_changed(self, **event_args):
         self._wp_dirty[0] = True
+        self._wp_search_btn.enabled = bool((self._wp_input.text or '').strip())
 
     def _wp_autosave(self, **event_args):
         if self._wp_dirty[0]:
@@ -3527,6 +3530,7 @@ class Form1(Form1Template):
             state = anvil.server.call('get_workpad_state')
             self._wp_input.text = state.get('input_text', '')
             self._wp_url.text = state.get('attach_url', '')
+            self._wp_search_btn.enabled = bool((self._wp_input.text or '').strip())
             self._wp_render_output(state.get('output_entries', []))
         except Exception as e:
             self._wp_fb.text = f'❌ Load failed: {e}'
@@ -3536,30 +3540,82 @@ class Form1(Form1Template):
         if not entries:
             self._wp_output_panel.add_component(Label(text='No output yet.', role='body', font_size=14))
             return
+
+        def _make_url_setter(u):
+            def _set(**kw):
+                self._wp_url.text = u
+            return _set
+
+        def _make_expand(e_btn, f_lbl):
+            def _toggle(**kw):
+                f_lbl.visible = not f_lbl.visible
+                e_btn.text = 'Show less' if f_lbl.visible else 'Show more'
+            return _toggle
+
         for entry in reversed(entries):
             action = entry.get('action', '')
-            result = entry.get('result', '')
             ts = entry.get('timestamp', '')
             card = ColumnPanel()
-            card.add_component(Label(
-                text=f'{_rel_time(ts)} — {action}',
-                role='body', font_size=13, bold=True,
-            ))
-            truncated = result[:600] + ('…' if len(result) > 600 else '')
-            body_lbl = Label(text=truncated, role='body', font_size=14)
-            card.add_component(body_lbl)
-            if len(result) > 600:
-                full_lbl = Label(text=result, role='body', font_size=14, visible=False)
-                expand_btn = Button(text='Show more', role='tonal-button', font_size=12)
-                card.add_component(full_lbl)
-                def _make_expand(e_btn, f_lbl):
-                    def _toggle(**kw):
-                        f_lbl.visible = not f_lbl.visible
-                        e_btn.text = 'Show less' if f_lbl.visible else 'Show more'
-                    return _toggle
-                expand_btn.set_event_handler('click', _make_expand(expand_btn, full_lbl))
-                card.add_component(expand_btn)
+            if action == 'search':
+                query_text = entry.get('query', '')
+                results = entry.get('results', [])
+                card.add_component(Label(
+                    text=f'🔍 {_rel_time(ts)} — {query_text[:80]}',
+                    role='body', font_size=13, bold=True,
+                ))
+                if not results:
+                    card.add_component(Label(text='No results.', role='body', font_size=14))
+                for res in results:
+                    title = res.get('title', '') or res.get('url', '')
+                    url = res.get('url', '')
+                    domain = res.get('source_domain', '')
+                    snippet = res.get('snippet', '')
+                    pub = res.get('published_date', '')
+                    row = ColumnPanel()
+                    title_btn = Button(text=title or url, role='tonal-button', font_size=14)
+                    title_btn.set_event_handler('click', _make_url_setter(url))
+                    row.add_component(title_btn)
+                    meta = domain + (' · ' + pub if pub else '')
+                    if meta:
+                        row.add_component(Label(text=meta, role='body', font_size=12))
+                    if snippet:
+                        snip = snippet[:200] + ('…' if len(snippet) > 200 else '')
+                        row.add_component(Label(text=snip, role='body', font_size=14))
+                    card.add_component(row)
+            else:
+                result = entry.get('result', '')
+                card.add_component(Label(
+                    text=f'{_rel_time(ts)} — {action}',
+                    role='body', font_size=13, bold=True,
+                ))
+                truncated = result[:600] + ('…' if len(result) > 600 else '')
+                body_lbl = Label(text=truncated, role='body', font_size=14)
+                card.add_component(body_lbl)
+                if len(result) > 600:
+                    full_lbl = Label(text=result, role='body', font_size=14, visible=False)
+                    expand_btn = Button(text='Show more', role='tonal-button', font_size=12)
+                    card.add_component(full_lbl)
+                    expand_btn.set_event_handler('click', _make_expand(expand_btn, full_lbl))
+                    card.add_component(expand_btn)
             self._wp_output_panel.add_component(card)
+
+    def _wp_search(self, **event_args):
+        self._wp_do_save()
+        query = (self._wp_input.text or '').strip()
+        if not query:
+            self._wp_fb.text = '❌ Nothing to search.'
+            return
+        self._wp_fb.text = 'Searching…'
+        self._wp_search_btn.enabled = False
+        try:
+            anvil.server.call('search_brave', query, 5)
+            state = anvil.server.call('get_workpad_state')
+            self._wp_render_output(state.get('output_entries', []))
+            self._wp_fb.text = '✅ Search complete.'
+        except Exception as e:
+            self._wp_fb.text = f'❌ {e}'
+        finally:
+            self._wp_search_btn.enabled = bool(query)
 
     def _wp_read_url(self, **event_args):
         self._wp_do_save()
