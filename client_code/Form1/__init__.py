@@ -195,22 +195,22 @@ class Form1(Form1Template):
         ctrl_row.add_component(self._auto_feedback)
         panel.add_component(ctrl_row)
 
-        # Row 2: Directive textarea + button
-        dir_row = FlowPanel(spacing_above='none', spacing_below='none')
-        dir_row.add_component(Label(text='Directive:', role='body', font_size=14))
+        # Row 2: Directive — label | textarea (60%) | button
+        dir_grid = GridPanel(col_widths=[2, 6, 2])
+        dir_grid.add_component(Label(text='Directive:', role='body', font_size=14), row='A', col=0)
         self._directive_input = TextArea(
             placeholder='e.g. "Run: B-032" or free text',
             role='outlined',
             height=60,
-            width='62%',
+            width='100%',
         )
-        dir_row.add_component(self._directive_input)
+        dir_grid.add_component(self._directive_input, row='A', col=1)
         dir_btn = Button(text='Write', role='tonal-button')
         dir_btn.set_event_handler('click', self._write_directive_clicked)
-        dir_row.add_component(dir_btn)
+        dir_grid.add_component(dir_btn, row='A', col=2)
+        panel.add_component(dir_grid)
         self._directive_feedback = Label(text='', role='body', font_size=14)
-        dir_row.add_component(self._directive_feedback)
-        panel.add_component(dir_row)
+        panel.add_component(self._directive_feedback)
 
     def _build_home_layout(self):
         # 1. Status strip
@@ -250,14 +250,14 @@ class Form1(Form1Template):
         # 3. Compact controls: lean trigger + auto toggle + directive
         self._build_controls(self._home_panel)
 
-        # 4. Note input
-        note_row = FlowPanel(spacing_above='none', spacing_below='none')
-        self._home_note_input = TextArea(placeholder="What's on your mind?", height=70, width='68%')
+        # 4. Note input — textarea (70%) | button
+        note_grid = GridPanel(col_widths=[7, 3])
+        self._home_note_input = TextArea(placeholder="What's on your mind?", height=70, width='100%')
         self._home_add_note_btn = Button(text='Add note', role='filled-button')
         self._home_add_note_btn.set_event_handler('click', self._home_add_note_clicked)
-        note_row.add_component(self._home_note_input)
-        note_row.add_component(self._home_add_note_btn)
-        self._home_panel.add_component(note_row)
+        note_grid.add_component(self._home_note_input, row='A', col=0)
+        note_grid.add_component(self._home_add_note_btn, row='A', col=1)
+        self._home_panel.add_component(note_grid)
         self._home_add_note_fb = Label(text='', role='body', font_size=14)
         self._home_panel.add_component(self._home_add_note_fb)
 
