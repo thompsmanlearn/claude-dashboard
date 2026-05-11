@@ -88,17 +88,19 @@ class Form1(Form1Template):
         self._threads_loaded = False
         self._threads_state_filter = 'active'
         self._grader_loaded = False
-        self._workspace_loaded = False
+        self._home_active_agents = 0
+        self._home_queue_pending = 0
+        self._home_inbox_count = 0
         self._build_layout()
         self.refresh_data()
 
     # ── Layout helpers ────────────────────────────────────────────────────────
 
-    def _make_section(self, title, default_open=False):
+    def _make_section(self, title, default_open=False, on_expand=None):
         """Return (outer_panel, body_panel, title_label) with collapsible header."""
         outer = ColumnPanel(role='outlined-card')
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        lbl = Label(text=title, role='title', bold=True, font_size=20)
+        lbl = Label(text=title, role='title', bold=True, font_size=22)
         btn = Button(text=_EXPAND if default_open else _COLLAPSE, role='text-button')
         hdr.add_component(lbl)
         hdr.add_component(btn)
@@ -106,10 +108,14 @@ class Form1(Form1Template):
         body = ColumnPanel()
         body.visible = default_open
         outer.add_component(body)
+        _on_expand_called = [False]
 
         def _toggle(**kw):
             body.visible = not body.visible
             btn.text = _EXPAND if body.visible else _COLLAPSE
+            if on_expand and body.visible and not _on_expand_called[0]:
+                _on_expand_called[0] = True
+                on_expand()
 
         btn.set_event_handler('click', _toggle)
         return outer, body, lbl
@@ -122,141 +128,67 @@ class Form1(Form1Template):
         top.add_component(ref_btn)
         self.content_panel.add_component(top)
 
-        # Tab navigation
+        # Tab navigation — five tabs
         tab_row = FlowPanel(spacing_above='none', spacing_below='small')
-        self._fleet_tab_btn = Button(text='Fleet', role='filled-button')
-        self._sessions_tab_btn = Button(text='Sessions', role='tonal-button')
-        self._lessons_tab_btn = Button(text='Lessons', role='tonal-button')
-        self._memory_tab_btn = Button(text='Memory', role='tonal-button')
-        self._research_tab_btn = Button(text='Research', role='tonal-button')
+        self._home_tab_btn = Button(text='Home', role='filled-button')
+        self._workpad_tab_btn = Button(text='Workpad', role='tonal-button')
         self._threads_tab_btn = Button(text='Threads', role='tonal-button')
-        self._skills_tab_btn = Button(text='Skills', role='tonal-button')
-        self._artifacts_tab_btn = Button(text='Artifacts', role='tonal-button')
-        self._grader_tab_btn = Button(text='Grader', role='tonal-button')
-        self._workspace_tab_btn = Button(text='Workspace', role='tonal-button')
-        self._fleet_tab_btn.set_event_handler('click', self._show_fleet_tab)
-        self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
-        self._lessons_tab_btn.set_event_handler('click', self._show_lessons_tab)
-        self._memory_tab_btn.set_event_handler('click', self._show_memory_tab)
-        self._research_tab_btn.set_event_handler('click', self._show_research_tab)
+        self._sessions_tab_btn = Button(text='Sessions', role='tonal-button')
+        self._system_tab_btn = Button(text='System', role='tonal-button')
+        self._home_tab_btn.set_event_handler('click', self._show_home_tab)
+        self._workpad_tab_btn.set_event_handler('click', self._show_workpad_tab)
         self._threads_tab_btn.set_event_handler('click', self._show_threads_tab)
-        self._skills_tab_btn.set_event_handler('click', self._show_skills_tab)
-        self._artifacts_tab_btn.set_event_handler('click', self._show_artifacts_tab)
-        self._grader_tab_btn.set_event_handler('click', self._show_grader_tab)
-        self._workspace_tab_btn.set_event_handler('click', self._show_workspace_tab)
-        tab_row.add_component(self._fleet_tab_btn)
-        tab_row.add_component(self._sessions_tab_btn)
-        tab_row.add_component(self._lessons_tab_btn)
-        tab_row.add_component(self._memory_tab_btn)
-        tab_row.add_component(self._research_tab_btn)
+        self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
+        self._system_tab_btn.set_event_handler('click', self._show_system_tab)
+        tab_row.add_component(self._home_tab_btn)
+        tab_row.add_component(self._workpad_tab_btn)
         tab_row.add_component(self._threads_tab_btn)
-        tab_row.add_component(self._skills_tab_btn)
-        tab_row.add_component(self._artifacts_tab_btn)
-        tab_row.add_component(self._grader_tab_btn)
-        tab_row.add_component(self._workspace_tab_btn)
+        tab_row.add_component(self._sessions_tab_btn)
+        tab_row.add_component(self._system_tab_btn)
         self.content_panel.add_component(tab_row)
 
-        # Fleet panel (default visible)
-        self._fleet_panel = ColumnPanel()
-        _fleet_hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        _fleet_hdr.add_component(Label(text='Fleet', role='title', bold=True, font_size=20))
-        self._fleet_export_btn = Button(text='⬇ Export', role='tonal-button')
-        self._fleet_export_btn.set_event_handler('click', self._fleet_export_clicked)
-        _fleet_hdr.add_component(self._fleet_export_btn)
-        self._cmt_export_btn = Button(text='✏️ Comment work', role='outlined-button')
-        self._cmt_export_fb = Label(text='', role='body', font_size=13)
-        self._cmt_export_btn.set_event_handler('click', self._export_comment_work_clicked)
-        _fleet_hdr.add_component(self._cmt_export_btn)
-        self._fleet_panel.add_component(_fleet_hdr)
-        self._cmt_export_panel = ColumnPanel()
-        self._cmt_export_panel.visible = False
-        self._fleet_panel.add_component(self._cmt_export_panel)
-        self._fleet_panel.add_component(self._cmt_export_fb)
-        self._fleet_export_fb = Label(text='', role='body', font_size=14)
-        self._fleet_panel.add_component(self._fleet_export_fb)
-        self._fleet_export_panel = ColumnPanel()
-        self._fleet_export_panel.visible = False
-        self._fleet_panel.add_component(self._fleet_export_panel)
-        sec, self._status_body, _ = self._make_section('System Status', default_open=True)
-        self._fleet_panel.add_component(sec)
-        sec, self._agents_body, self._agents_lbl = self._make_section('Agent Fleet')
-        self._fleet_panel.add_component(sec)
-        sec, self._queue_body, self._queue_lbl = self._make_section('Work Queue')
-        self._fleet_panel.add_component(sec)
-        sec, self._inbox_body, self._inbox_lbl = self._make_section('Inbox')
-        self._fleet_panel.add_component(sec)
-        sec, controls_body, _ = self._make_section('Controls')
-        self._build_controls(controls_body)
-        self._fleet_panel.add_component(sec)
-        self.content_panel.add_component(self._fleet_panel)
+        # Home panel (default visible)
+        self._home_panel = ColumnPanel()
+        self._build_home_layout()
+        self.content_panel.add_component(self._home_panel)
 
-        # Sessions panel (hidden by default)
-        self._sessions_panel = ColumnPanel()
-        self._sessions_panel.visible = False
-        self._build_sessions_layout()
-        self.content_panel.add_component(self._sessions_panel)
+        # Workpad panel (hidden)
+        self._workpad_panel = ColumnPanel()
+        self._workpad_panel.visible = False
+        self._build_workpad_layout()
+        self.content_panel.add_component(self._workpad_panel)
 
-        # Lessons panel (hidden by default)
-        self._lessons_panel = ColumnPanel()
-        self._lessons_panel.visible = False
-        self._build_lessons_layout()
-        self.content_panel.add_component(self._lessons_panel)
-
-        # Memory panel (hidden by default)
-        self._memory_panel = ColumnPanel()
-        self._memory_panel.visible = False
-        self._build_memory_layout()
-        self.content_panel.add_component(self._memory_panel)
-
-        # Skills panel (hidden by default)
-        self._skills_panel = ColumnPanel()
-        self._skills_panel.visible = False
-        self._build_skills_layout()
-        self.content_panel.add_component(self._skills_panel)
-
-        # Artifacts panel (hidden by default)
-        self._artifacts_panel = ColumnPanel()
-        self._artifacts_panel.visible = False
-        self._build_artifacts_layout()
-        self.content_panel.add_component(self._artifacts_panel)
-
-        # Research panel (hidden by default)
-        self._research_panel = ColumnPanel()
-        self._research_panel.visible = False
-        self._build_research_layout()
-        self.content_panel.add_component(self._research_panel)
-
-        # Threads panel (hidden by default)
+        # Threads panel (hidden)
         self._threads_panel = ColumnPanel()
         self._threads_panel.visible = False
         self._build_threads_layout()
         self.content_panel.add_component(self._threads_panel)
 
-        # Grader panel (hidden by default)
-        self._grader_panel = ColumnPanel()
-        self._grader_panel.visible = False
-        self._build_grader_layout()
-        self.content_panel.add_component(self._grader_panel)
+        # Sessions panel (hidden)
+        self._sessions_panel = ColumnPanel()
+        self._sessions_panel.visible = False
+        self._build_sessions_layout()
+        self.content_panel.add_component(self._sessions_panel)
 
-        # Workspace panel (hidden by default)
-        self._workspace_panel = ColumnPanel()
-        self._workspace_panel.visible = False
-        self._build_workspace_layout()
-        self.content_panel.add_component(self._workspace_panel)
+        # System panel (hidden) — wraps Fleet, Memory, Lessons, Skills, Artifacts, Research, Grader
+        self._system_panel = ColumnPanel()
+        self._system_panel.visible = False
+        self._build_system_layout()
+        self.content_panel.add_component(self._system_panel)
 
     def _build_controls(self, panel):
-        panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=16))
+        panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=18))
 
         self._lean_trigger_btn = Button(text='Trigger Lean Session', role='tonal-button')
         self._lean_trigger_btn.set_event_handler('click', self._trigger_lean_clicked)
         panel.add_component(self._lean_trigger_btn)
-        self._lean_feedback = Label(text='', role='body', font_size=16)
+        self._lean_feedback = Label(text='', role='body', font_size=18)
         panel.add_component(self._lean_feedback)
 
-        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
 
-        panel.add_component(Label(text='Write Directive', bold=True, role='body', font_size=16))
-        panel.add_component(Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body', font_size=16))
+        panel.add_component(Label(text='Write Directive', bold=True, role='body', font_size=18))
+        panel.add_component(Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body', font_size=18))
         self._directive_input = TextArea(
             placeholder='e.g. "Run: B-032" or free text',
             role='outlined',
@@ -266,13 +198,13 @@ class Form1(Form1Template):
         dir_btn = Button(text='Write Directive', role='tonal-button')
         dir_btn.set_event_handler('click', self._write_directive_clicked)
         panel.add_component(dir_btn)
-        self._directive_feedback = Label(text='', role='body', font_size=16)
+        self._directive_feedback = Label(text='', role='body', font_size=18)
         panel.add_component(self._directive_feedback)
 
-        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
 
-        panel.add_component(Label(text='Autonomous Mode', bold=True, role='body', font_size=16))
-        panel.add_component(Label(text='Toggles growth scheduler + lean auto-cycle.', role='body', font_size=16))
+        panel.add_component(Label(text='Autonomous Mode', bold=True, role='body', font_size=18))
+        panel.add_component(Label(text='Toggles growth scheduler + lean auto-cycle.', role='body', font_size=18))
 
         auto_row = FlowPanel(spacing_above='none', spacing_below='small')
         self._auto_btn = Button(text='\u23f3 Checking\u2026', role='tonal-button')
@@ -283,8 +215,182 @@ class Form1(Form1Template):
         auto_row.add_component(refresh_auto_btn)
         panel.add_component(auto_row)
 
-        self._auto_feedback = Label(text='', role='body', font_size=16)
+        self._auto_feedback = Label(text='', role='body', font_size=18)
         panel.add_component(self._auto_feedback)
+
+    def _build_home_layout(self):
+        # ── Status strip ─────────────────────────────────────────────────────
+        strip = FlowPanel(spacing_above='small', spacing_below='small')
+        self._home_health_lbl = Label(text='⏳', font_size=24, bold=True)
+        self._home_agents_lbl = Label(text='—', font_size=24)
+        self._home_queue_lbl = Label(text='—', font_size=24)
+        self._home_inbox_badge = Label(text='—', font_size=24, bold=True)
+        strip.add_component(self._home_health_lbl)
+        strip.add_component(Label(text='  Agents: ', font_size=18))
+        strip.add_component(self._home_agents_lbl)
+        strip.add_component(Label(text='  Queue: ', font_size=18))
+        strip.add_component(self._home_queue_lbl)
+        strip.add_component(Label(text='  Inbox: ', font_size=18))
+        strip.add_component(self._home_inbox_badge)
+        self._home_panel.add_component(strip)
+
+        # ── Primary action buttons ────────────────────────────────────────────
+        actions = FlowPanel(spacing_above='small', spacing_below='small')
+        _write_note_btn = Button(text='Write note', role='tonal-button')
+        _write_dir_btn = Button(text='Write directive', role='tonal-button')
+        self._home_export_working_btn = Button(text='⬇ Export working bundle', role='tonal-button')
+        self._home_export_audit_btn = Button(text='⬇ Export audit bundle', role='tonal-button')
+        _write_note_btn.set_event_handler('click', lambda **kw: setattr(self._home_add_note_fb, 'text', '↓ Note input below'))
+        _write_dir_btn.set_event_handler('click', lambda **kw: setattr(self._directive_feedback, 'text', '↓ Directive input below'))
+        self._home_export_working_btn.set_event_handler('click', self._home_export_working_clicked)
+        self._home_export_audit_btn.set_event_handler('click', self._home_export_audit_clicked)
+        actions.add_component(_write_note_btn)
+        actions.add_component(_write_dir_btn)
+        actions.add_component(self._home_export_working_btn)
+        actions.add_component(self._home_export_audit_btn)
+        self._home_panel.add_component(actions)
+        self._home_export_fb = Label(text='', role='body', font_size=18)
+        self._home_export_fallback = ColumnPanel()
+        self._home_export_fallback.visible = False
+        self._home_panel.add_component(self._home_export_fb)
+        self._home_panel.add_component(self._home_export_fallback)
+
+        # ── Write note ────────────────────────────────────────────────────────
+        self._home_panel.add_component(Label(text='―' * 20, role='body', font_size=11))
+        self._home_panel.add_component(Label(text='Note', bold=True, role='body', font_size=18))
+        note_row = FlowPanel(spacing_above='none', spacing_below='none')
+        self._home_note_input = TextArea(placeholder="What's on your mind?", height=80)
+        self._home_add_note_btn = Button(text='Add note', role='filled-button')
+        self._home_add_note_btn.set_event_handler('click', self._home_add_note_clicked)
+        note_row.add_component(self._home_note_input)
+        note_row.add_component(self._home_add_note_btn)
+        self._home_panel.add_component(note_row)
+        self._home_add_note_fb = Label(text='', role='body', font_size=18)
+        self._home_panel.add_component(self._home_add_note_fb)
+        self._home_panel.add_component(Label(text='Unaddressed notes:', bold=True, role='body', font_size=18))
+        self._home_notes_panel = ColumnPanel()
+        self._home_panel.add_component(self._home_notes_panel)
+
+        # ── Inbox ─────────────────────────────────────────────────────────────
+        self._home_panel.add_component(Label(text='―' * 20, role='body', font_size=11))
+        self._home_inbox_lbl = Label(text='Pending Inbox', bold=True, role='body', font_size=18)
+        self._home_panel.add_component(self._home_inbox_lbl)
+        self._home_inbox_body = ColumnPanel()
+        self._home_panel.add_component(self._home_inbox_body)
+
+        # ── Controls (Lean Session, Write Directive, Autonomous Mode) ─────────
+        self._home_panel.add_component(Label(text='―' * 20, role='body', font_size=11))
+        self._build_controls(self._home_panel)
+
+    def _build_workpad_layout(self):
+        self._workpad_panel.add_component(Label(
+            text='Workpad — coming in B-128. This will be a lightweight investigation surface for exploring questions before they become threads.',
+            role='body', font_size=18,
+        ))
+
+    def _build_fleet_inner(self, panel):
+        fleet_hdr = FlowPanel(spacing_above='small', spacing_below='small')
+        self._fleet_export_btn = Button(text='⬇ Export fleet', role='tonal-button')
+        self._fleet_export_btn.set_event_handler('click', self._fleet_export_clicked)
+        fleet_hdr.add_component(self._fleet_export_btn)
+        self._cmt_export_btn = Button(text='✏️ Comment work', role='outlined-button')
+        self._cmt_export_fb = Label(text='', role='body', font_size=13)
+        self._cmt_export_btn.set_event_handler('click', self._export_comment_work_clicked)
+        fleet_hdr.add_component(self._cmt_export_btn)
+        panel.add_component(fleet_hdr)
+        self._cmt_export_panel = ColumnPanel()
+        self._cmt_export_panel.visible = False
+        panel.add_component(self._cmt_export_panel)
+        panel.add_component(self._cmt_export_fb)
+        self._fleet_export_fb = Label(text='', role='body', font_size=14)
+        panel.add_component(self._fleet_export_fb)
+        self._fleet_export_panel = ColumnPanel()
+        self._fleet_export_panel.visible = False
+        panel.add_component(self._fleet_export_panel)
+        sec, self._status_body, _ = self._make_section('System Status', default_open=True)
+        panel.add_component(sec)
+        sec, self._agents_body, self._agents_lbl = self._make_section('Agent Fleet')
+        panel.add_component(sec)
+        sec, self._queue_body, self._queue_lbl = self._make_section('Work Queue')
+        panel.add_component(sec)
+
+    def _build_system_layout(self):
+        # Fleet
+        fleet_sec, fleet_body, _ = self._make_section('Fleet')
+        self._build_fleet_inner(fleet_body)
+        self._system_panel.add_component(fleet_sec)
+
+        # Memory
+        self._memory_panel = ColumnPanel()
+        self._build_memory_layout()
+        mem_sec, mem_body, _ = self._make_section('Memory', on_expand=self._lazy_load_memory)
+        mem_body.add_component(self._memory_panel)
+        self._system_panel.add_component(mem_sec)
+
+        # Lessons
+        self._lessons_panel = ColumnPanel()
+        self._build_lessons_layout()
+        lessons_sec, lessons_body, _ = self._make_section('Lessons', on_expand=self._lazy_load_lessons)
+        lessons_body.add_component(self._lessons_panel)
+        self._system_panel.add_component(lessons_sec)
+
+        # Skills
+        self._skills_panel = ColumnPanel()
+        self._build_skills_layout()
+        skills_sec, skills_body, _ = self._make_section('Skills', on_expand=self._lazy_load_skills)
+        skills_body.add_component(self._skills_panel)
+        self._system_panel.add_component(skills_sec)
+
+        # Artifacts
+        self._artifacts_panel = ColumnPanel()
+        self._build_artifacts_layout()
+        artifacts_sec, artifacts_body, _ = self._make_section('Artifacts', on_expand=self._lazy_load_artifacts)
+        artifacts_body.add_component(self._artifacts_panel)
+        self._system_panel.add_component(artifacts_sec)
+
+        # Research
+        self._research_panel = ColumnPanel()
+        self._build_research_layout()
+        research_sec, research_body, _ = self._make_section('Research', on_expand=self._lazy_load_research)
+        research_body.add_component(self._research_panel)
+        self._system_panel.add_component(research_sec)
+
+        # Grader
+        self._grader_panel = ColumnPanel()
+        self._build_grader_layout()
+        grader_sec, grader_body, _ = self._make_section('Grader', on_expand=self._lazy_load_grader)
+        grader_body.add_component(self._grader_panel)
+        self._system_panel.add_component(grader_sec)
+
+    def _lazy_load_memory(self):
+        if not self._memory_loaded:
+            self._load_memory_collections()
+            self._memory_loaded = True
+
+    def _lazy_load_lessons(self):
+        if not self._lessons_loaded:
+            self._load_lessons('recent')
+            self._lessons_loaded = True
+
+    def _lazy_load_skills(self):
+        if not self._skills_loaded:
+            self._load_skills()
+            self._skills_loaded = True
+
+    def _lazy_load_artifacts(self):
+        if not self._artifacts_loaded:
+            self._load_artifacts()
+            self._artifacts_loaded = True
+
+    def _lazy_load_research(self):
+        if not self._research_loaded:
+            self._load_research_tab()
+            self._research_loaded = True
+
+    def _lazy_load_grader(self):
+        if not self._grader_loaded:
+            self._load_grader_reviews()
+            self._grader_loaded = True
 
     # ── Data loaders ──────────────────────────────────────────────────────────
 
@@ -332,70 +438,29 @@ class Form1(Form1Template):
 
     def _set_tab(self, active):
         panels = {
-            'fleet': self._fleet_panel,
-            'sessions': self._sessions_panel,
-            'lessons': self._lessons_panel,
-            'memory': self._memory_panel,
-            'research': self._research_panel,
+            'home': self._home_panel,
+            'workpad': self._workpad_panel,
             'threads': self._threads_panel,
-            'skills': self._skills_panel,
-            'artifacts': self._artifacts_panel,
-            'grader': self._grader_panel,
-            'workspace': self._workspace_panel,
+            'sessions': self._sessions_panel,
+            'system': self._system_panel,
         }
         btns = {
-            'fleet': self._fleet_tab_btn,
-            'sessions': self._sessions_tab_btn,
-            'lessons': self._lessons_tab_btn,
-            'memory': self._memory_tab_btn,
-            'research': self._research_tab_btn,
+            'home': self._home_tab_btn,
+            'workpad': self._workpad_tab_btn,
             'threads': self._threads_tab_btn,
-            'skills': self._skills_tab_btn,
-            'artifacts': self._artifacts_tab_btn,
-            'grader': self._grader_tab_btn,
-            'workspace': self._workspace_tab_btn,
+            'sessions': self._sessions_tab_btn,
+            'system': self._system_tab_btn,
         }
         for name, panel in panels.items():
             panel.visible = (name == active)
         for name, btn in btns.items():
             btn.role = 'filled-button' if name == active else 'tonal-button'
 
-    def _show_fleet_tab(self, **event_args):
-        self._set_tab('fleet')
+    def _show_home_tab(self, **event_args):
+        self._set_tab('home')
 
-    def _show_sessions_tab(self, **event_args):
-        self._set_tab('sessions')
-        self._load_sessions()
-
-    def _show_lessons_tab(self, **event_args):
-        self._set_tab('lessons')
-        if not self._lessons_loaded:
-            self._load_lessons('recent')
-            self._lessons_loaded = True
-
-    def _show_memory_tab(self, **event_args):
-        self._set_tab('memory')
-        if not self._memory_loaded:
-            self._load_memory_collections()
-            self._memory_loaded = True
-
-    def _show_skills_tab(self, **event_args):
-        self._set_tab('skills')
-        if not self._skills_loaded:
-            self._load_skills()
-            self._skills_loaded = True
-
-    def _show_artifacts_tab(self, **event_args):
-        self._set_tab('artifacts')
-        if not self._artifacts_loaded:
-            self._load_artifacts()
-            self._artifacts_loaded = True
-
-    def _show_research_tab(self, **event_args):
-        self._set_tab('research')
-        if not self._research_loaded:
-            self._load_research_tab()
-            self._research_loaded = True
+    def _show_workpad_tab(self, **event_args):
+        self._set_tab('workpad')
 
     def _show_threads_tab(self, **event_args):
         self._set_tab('threads')
@@ -403,17 +468,12 @@ class Form1(Form1Template):
             self._load_threads()
             self._threads_loaded = True
 
-    def _show_grader_tab(self, **event_args):
-        self._set_tab('grader')
-        if not self._grader_loaded:
-            self._load_grader_reviews()
-            self._grader_loaded = True
+    def _show_sessions_tab(self, **event_args):
+        self._set_tab('sessions')
+        self._load_sessions()
 
-    def _show_workspace_tab(self, **event_args):
-        self._set_tab('workspace')
-        if not self._workspace_loaded:
-            self._load_workspace_notes()
-            self._workspace_loaded = True
+    def _show_system_tab(self, **event_args):
+        self._set_tab('system')
 
     # ── Threads tab ───────────────────────────────────────────────────────────
 
@@ -432,7 +492,7 @@ class Form1(Form1Template):
         self._threads_panel.add_component(create_row)
 
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Threads', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Threads', role='title', bold=True, font_size=22))
         self._threads_state_dd = DropDown(
             items=['active', 'dormant', 'closed', 'all'],
             selected_value='active',
@@ -480,7 +540,7 @@ class Form1(Form1Template):
 
     def _load_threads(self):
         self._threads_body.clear()
-        self._threads_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        self._threads_body.add_component(Label(text='Loading\u2026', role='body', font_size=18))
         state = self._threads_state_filter
         try:
             with anvil.server.no_loading_indicator:
@@ -493,7 +553,7 @@ class Form1(Form1Template):
             )
             if not threads:
                 self._threads_body.add_component(
-                    Label(text=f'No {state} threads.', role='body', font_size=16)
+                    Label(text=f'No {state} threads.', role='body', font_size=18)
                 )
                 return
             for t in threads:
@@ -501,7 +561,7 @@ class Form1(Form1Template):
         except Exception as e:
             self._threads_body.clear()
             self._threads_counter_lbl.text = ''
-            self._threads_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._threads_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _build_thread_card(self, t):
         thread_id = t.get('id', '')
@@ -516,7 +576,7 @@ class Form1(Form1Template):
         title_row = FlowPanel(spacing_above='none', spacing_below='none')
         toggle_btn = Button(text=_COLLAPSE, role='text-button')
         title_row.add_component(toggle_btn)
-        title_row.add_component(Label(text=title, bold=True, role='body', font_size=16))
+        title_row.add_component(Label(text=title, bold=True, role='body', font_size=18))
         badge_lbl = Label(text=f'  {_STATE_BADGE.get(t_state[0].get("state","active"), t_state[0].get("state","active"))}', role='body', font_size=13)
         title_row.add_component(badge_lbl)
         hdr_panel.add_component(title_row)
@@ -1381,9 +1441,8 @@ class Form1(Form1Template):
         self._load_inbox()
         self._refresh_lean_status()
         self._refresh_auto_status()
-        if not self._fleet_panel.visible:
-            self._load_lessons(self._lessons_current_filter)
-            self._lessons_loaded = True
+        self._load_home_notes()
+        self._update_home_status_strip()
 
     def _load_status(self):
         self._status_body.clear()
@@ -1396,9 +1455,9 @@ class Form1(Form1Template):
                 f"Temp: {s['temperature_c']:.1f}\u00b0C",
                 f"Uptime: {s['uptime_human']}",
             ]:
-                self._status_body.add_component(Label(text=row, role='body', font_size=16))
+                self._status_body.add_component(Label(text=row, role='body', font_size=18))
         except Exception as e:
-            self._status_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
+            self._status_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=18))
 
     def _load_agents(self):
         self._agent_card_panels = []
@@ -1406,7 +1465,7 @@ class Form1(Form1Template):
 
         # Search bar
         search_row = FlowPanel(spacing_above='none', spacing_below='small')
-        search_row.add_component(Label(text='\U0001f50d ', role='body', font_size=16))
+        search_row.add_component(Label(text='\U0001f50d ', role='body', font_size=18))
         self._search_box = TextBox(placeholder='Filter by name\u2026', width=220)
         self._search_box.set_event_handler('change', self._filter_agents)
         search_row.add_component(self._search_box)
@@ -1415,6 +1474,7 @@ class Form1(Form1Template):
         try:
             agents = anvil.server.call('get_agent_fleet')
             self._agents_lbl.text = f'Agent Fleet ({len(agents)})'
+            self._home_active_agents = sum(1 for a in agents if a.get('status') == 'active')
 
             # Load comment-driven activity for indicators (B-114)
             try:
@@ -1435,7 +1495,7 @@ class Form1(Form1Template):
                 grp_outer = ColumnPanel()
                 grp_hdr = FlowPanel(spacing_above='small', spacing_below='none')
                 grp_hdr.add_component(
-                    Label(text=f'{icon} {status.capitalize()} ({len(group_agents)})', bold=True, role='body', font_size=16)
+                    Label(text=f'{icon} {status.capitalize()} ({len(group_agents)})', bold=True, role='body', font_size=18)
                 )
                 grp_btn = Button(text=_EXPAND, role='text-button')
                 grp_hdr.add_component(grp_btn)
@@ -1456,7 +1516,7 @@ class Form1(Form1Template):
                     grp_body.add_component(self._build_agent_card(agent, cmt_activity))
 
         except Exception as e:
-            self._agents_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
+            self._agents_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=18))
 
     def _build_agent_card(self, agent, cmt_activity=None):
         agent_name = agent.get('agent_name', '')
@@ -1474,7 +1534,7 @@ class Form1(Form1Template):
 
         # Compact header (always visible)
         compact = FlowPanel(spacing_above='none', spacing_below='none')
-        compact.add_component(Label(text=f'{icon} {display_name}{prot_mark}', role='body', font_size=16))
+        compact.add_component(Label(text=f'{icon} {display_name}{prot_mark}', role='body', font_size=18))
         expand_btn = Button(text='+', role='text-button')
         compact.add_component(expand_btn)
         card.add_component(compact)
@@ -1484,16 +1544,16 @@ class Form1(Form1Template):
         detail.visible = False
         card.add_component(detail)
 
-        card.add_component(Label(text='\u2500' * 25, role='body', font_size=16))
+        card.add_component(Label(text='\u2500' * 25, role='body', font_size=18))
 
         # Populate detail
         if description:
             preview = description[:120] + ('\u2026' if len(description) > 120 else '')
-            detail.add_component(Label(text=preview, role='body', font_size=16))
+            detail.add_component(Label(text=preview, role='body', font_size=18))
         meta = f'Schedule: {schedule}'
         if updated_at:
             meta += f'  |  Updated: {updated_at}'
-        detail.add_component(Label(text=meta, role='body', font_size=16))
+        detail.add_component(Label(text=meta, role='body', font_size=18))
 
         # Comment-driven modification indicator (B-114)
         if cmt_activity and agent_name in cmt_activity:
@@ -1503,7 +1563,7 @@ class Form1(Form1Template):
                 role='body', font_size=13, italic=True,
             ))
 
-        fb_label = Label(text='', role='body', font_size=16)
+        fb_label = Label(text='', role='body', font_size=18)
         action_row = FlowPanel(spacing_above='none', spacing_below='none')
 
         if status in ('active', 'paused'):
@@ -1588,14 +1648,15 @@ class Form1(Form1Template):
             tasks = anvil.server.call('get_work_queue')
             pending = sum(1 for t in tasks if t['status'] == 'pending')
             claimed = sum(1 for t in tasks if t['status'] == 'claimed')
+            self._home_queue_pending = pending
             self._queue_lbl.text = f'Work Queue \u2014 {pending} pending, {claimed} claimed'
             if not tasks:
-                self._queue_body.add_component(Label(text='Queue is empty', role='body', font_size=16))
+                self._queue_body.add_component(Label(text='Queue is empty', role='body', font_size=18))
                 return
             for t in tasks[:20]:
                 self._queue_body.add_component(self._build_queue_card(t))
         except Exception as e:
-            self._queue_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
+            self._queue_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=18))
 
     def _build_queue_card(self, task):
         status = task.get('status', '?')
@@ -1611,7 +1672,7 @@ class Form1(Form1Template):
 
         card = ColumnPanel(role='outlined-card')
         compact = FlowPanel(spacing_above='none', spacing_below='none')
-        compact.add_component(Label(text=f'{icon} {task_type}  (p:{priority})', role='body', font_size=16))
+        compact.add_component(Label(text=f'{icon} {task_type}  (p:{priority})', role='body', font_size=18))
         expand_btn = Button(text='+', role='text-button')
         compact.add_component(expand_btn)
         card.add_component(compact)
@@ -1635,29 +1696,30 @@ class Form1(Form1Template):
         return card
 
     def _load_inbox(self):
-        self._inbox_body.clear()
+        self._home_inbox_body.clear()
         try:
             items = anvil.server.call('get_inbox')
-            self._inbox_lbl.text = f'Inbox \u2014 {len(items)} pending'
+            self._home_inbox_count = len(items)
+            self._home_inbox_lbl.text = f'Pending Inbox \u2014 {len(items)} pending'
             if not items:
-                self._inbox_body.add_component(Label(text='Inbox is clear.', role='body', font_size=16))
+                self._home_inbox_body.add_component(Label(text='Inbox is clear.', role='body', font_size=18))
                 return
             for item in items:
                 self._render_inbox_item(item)
         except Exception as e:
-            self._inbox_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=16))
+            self._home_inbox_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=18))
 
     def _render_inbox_item(self, item):
         item_id = item['id']
-        self._inbox_body.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
-        self._inbox_body.add_component(Label(text=item['subject'], bold=True, role='body', font_size=16))
-        self._inbox_body.add_component(
-            Label(text=f"From: {item['from_agent']}  |  Priority: {item.get('priority', 'normal')}", role='body', font_size=16)
+        self._home_inbox_body.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
+        self._home_inbox_body.add_component(Label(text=item['subject'], bold=True, role='body', font_size=18))
+        self._home_inbox_body.add_component(
+            Label(text=f"From: {item['from_agent']}  |  Priority: {item.get('priority', 'normal')}", role='body', font_size=18)
         )
         body_text = item.get('body') or ''
         preview = body_text[:200] + ('\u2026' if len(body_text) > 200 else '')
-        self._inbox_body.add_component(Label(text=preview, role='body', font_size=16))
-        fb_label = Label(text='', role='body', font_size=16)
+        self._home_inbox_body.add_component(Label(text=preview, role='body', font_size=18))
+        fb_label = Label(text='', role='body', font_size=18)
         btn_row = FlowPanel(spacing_above='none', spacing_below='none')
         approve_btn = Button(text='Approve', role='filled-button')
         deny_btn = Button(text='Deny', role='outlined-button')
@@ -1684,14 +1746,14 @@ class Form1(Form1Template):
         deny_btn.set_event_handler('click', on_deny)
         btn_row.add_component(approve_btn)
         btn_row.add_component(deny_btn)
-        self._inbox_body.add_component(btn_row)
-        self._inbox_body.add_component(fb_label)
+        self._home_inbox_body.add_component(btn_row)
+        self._home_inbox_body.add_component(fb_label)
 
     # ── Sessions tab ─────────────────────────────────────────────────────────
 
     def _build_sessions_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Sessions', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Sessions', role='title', bold=True, font_size=22))
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._load_sessions())
         hdr.add_component(ref_btn)
@@ -1706,18 +1768,18 @@ class Form1(Form1Template):
         self._sessions_panel.add_component(self._sessions_export_panel)
 
         # Boot Briefings section
-        self._briefings_lbl = Label(text='Boot Briefings', bold=True, role='body', font_size=16)
+        self._briefings_lbl = Label(text='Boot Briefings', bold=True, role='body', font_size=18)
         self._sessions_panel.add_component(self._briefings_lbl)
         self._briefings_body = ColumnPanel()
         self._sessions_panel.add_component(self._briefings_body)
-        self._sessions_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+        self._sessions_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
 
         self._sessions_status_card = ColumnPanel(role='outlined-card')
         self._sessions_panel.add_component(self._sessions_status_card)
 
-        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=18))
         site_hdr = FlowPanel(spacing_above='none', spacing_below='small')
-        site_hdr.add_component(Label(text='Site Status', bold=True, role='body', font_size=16))
+        site_hdr.add_component(Label(text='Site Status', bold=True, role='body', font_size=18))
         self._regen_btn = Button(text='Regenerate Site', role='tonal-button')
         self._regen_btn.set_event_handler('click', self._regenerate_site_clicked)
         site_hdr.add_component(self._regen_btn)
@@ -1727,9 +1789,9 @@ class Form1(Form1Template):
         self._site_status_card = ColumnPanel(role='outlined-card')
         self._sessions_panel.add_component(self._site_status_card)
 
-        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=18))
         self._sessions_panel.add_component(
-            Label(text='Recent Session Artifacts', bold=True, role='body', font_size=16)
+            Label(text='Recent Session Artifacts', bold=True, role='body', font_size=18)
         )
         self._sessions_artifacts_body = ColumnPanel()
         self._sessions_panel.add_component(self._sessions_artifacts_body)
@@ -1757,7 +1819,7 @@ class Form1(Form1Template):
                 status = anvil.server.call('get_session_status')
             if status is None:
                 self._sessions_status_card.add_component(
-                    Label(text='\U0001f7e2 No session data yet', role='body', font_size=16)
+                    Label(text='\U0001f7e2 No session data yet', role='body', font_size=18)
                 )
             else:
                 phase = status.get('phase') or 'unknown'
@@ -1778,14 +1840,14 @@ class Form1(Form1Template):
                 )
                 if action:
                     self._sessions_status_card.add_component(
-                        Label(text=action, role='body', font_size=16)
+                        Label(text=action, role='body', font_size=18)
                     )
                 self._sessions_status_card.add_component(
                     Label(text=f'Updated: {updated}', role='body', font_size=14)
                 )
         except Exception as e:
             self._sessions_status_card.add_component(
-                Label(text=f'Status unavailable: {e}', role='body', font_size=16)
+                Label(text=f'Status unavailable: {e}', role='body', font_size=18)
             )
 
         # Site status
@@ -1821,7 +1883,7 @@ class Form1(Form1Template):
                 artifacts = anvil.server.call('get_session_artifacts', 15)
             if not artifacts:
                 self._sessions_artifacts_body.add_component(
-                    Label(text='No session artifacts found.', role='body', font_size=16)
+                    Label(text='No session artifacts found.', role='body', font_size=18)
                 )
                 return
             for artifact in artifacts:
@@ -1830,7 +1892,7 @@ class Form1(Form1Template):
                 )
         except Exception as e:
             self._sessions_artifacts_body.add_component(
-                Label(text=f'Error loading artifacts: {e}', role='body', font_size=16)
+                Label(text=f'Error loading artifacts: {e}', role='body', font_size=18)
             )
 
     def _build_briefing_card(self, briefing):
@@ -1890,7 +1952,7 @@ class Form1(Form1Template):
         card = ColumnPanel(role='outlined-card')
 
         hdr = FlowPanel(spacing_above='none', spacing_below='none')
-        hdr.add_component(Label(text=title[:80], bold=True, role='body', font_size=16))
+        hdr.add_component(Label(text=title[:80], bold=True, role='body', font_size=18))
         expand_btn = Button(text='+', role='text-button')
         hdr.add_component(expand_btn)
         card.add_component(hdr)
@@ -1916,7 +1978,7 @@ class Form1(Form1Template):
 
     def _build_lessons_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Lessons', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Lessons', role='title', bold=True, font_size=22))
         self._lessons_export_btn = Button(text='⬇ Export', role='tonal-button')
         self._lessons_export_btn.set_event_handler('click', self._lessons_export_clicked)
         hdr.add_component(self._lessons_export_btn)
@@ -1965,13 +2027,13 @@ class Form1(Form1Template):
 
     def _load_lessons(self, filter):
         self._lessons_body.clear()
-        self._lessons_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        self._lessons_body.add_component(Label(text='Loading\u2026', role='body', font_size=18))
         try:
             if filter == 'search':
                 query = (self._lessons_search_box.text or '').strip()
                 if not query:
                     self._lessons_body.clear()
-                    self._lessons_body.add_component(Label(text='Enter a search query above.', role='body', font_size=16))
+                    self._lessons_body.add_component(Label(text='Enter a search query above.', role='body', font_size=18))
                     return
                 lessons = anvil.server.call('search_lessons', query)
             else:
@@ -1983,14 +2045,14 @@ class Form1(Form1Template):
                     role='body', font_size=13, italic=True,
                 ))
             if not lessons:
-                self._lessons_body.add_component(Label(text='No lessons found.', role='body', font_size=16))
+                self._lessons_body.add_component(Label(text='No lessons found.', role='body', font_size=18))
                 return
             self._lessons_body.add_component(Label(text=f'{len(lessons)} lesson(s)', role='body', font_size=14))
             for lesson in lessons:
                 self._lessons_body.add_component(self._build_lesson_card(lesson, is_search=(filter == 'search')))
         except Exception as e:
             self._lessons_body.clear()
-            self._lessons_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._lessons_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _build_lesson_card(self, lesson, is_search=False):
         lesson_id = lesson.get('id')
@@ -2003,7 +2065,7 @@ class Form1(Form1Template):
         created = (lesson.get('created_at') or '')[:10]
 
         card = ColumnPanel(role='outlined-card')
-        card.add_component(Label(text=title, bold=True, role='body', font_size=16))
+        card.add_component(Label(text=title, bold=True, role='body', font_size=18))
         meta = f'cat: {category}  |  applied: {times_applied}  |  conf: {conf_str}'
         if created:
             meta += f'  |  {created}'
@@ -2052,7 +2114,7 @@ class Form1(Form1Template):
 
     def _build_memory_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Memory', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Memory', role='title', bold=True, font_size=22))
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._refresh_memory())
         hdr.add_component(ref_btn)
@@ -2086,7 +2148,7 @@ class Form1(Form1Template):
         self._memory_panel.add_component(self._mem_docs_body)
 
         # Supabase section
-        self._memory_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=16))
+        self._memory_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
         self._memory_panel.add_component(Label(text='Supabase', bold=True, role='body', font_size=18))
 
         sb_row = FlowPanel(spacing_above='none', spacing_below='small')
@@ -2122,7 +2184,7 @@ class Form1(Form1Template):
 
     def _load_memory_collections(self):
         self._mem_colls_body.clear()
-        self._mem_colls_body.add_component(Label(text='Loading collections\u2026', role='body', font_size=16))
+        self._mem_colls_body.add_component(Label(text='Loading collections\u2026', role='body', font_size=18))
         try:
             with anvil.server.no_loading_indicator:
                 stats = anvil.server.call('get_collection_stats')
@@ -2144,12 +2206,12 @@ class Form1(Form1Template):
             self._mem_colls_body.add_component(row)
         except Exception as e:
             self._mem_colls_body.clear()
-            self._mem_colls_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._mem_colls_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _load_collection_docs(self, offset):
         self._mem_docs_body.clear()
         self._mem_docs_body.add_component(
-            Label(text=f'Loading {self._memory_selected_coll}\u2026', role='body', font_size=16)
+            Label(text=f'Loading {self._memory_selected_coll}\u2026', role='body', font_size=18)
         )
         try:
             with anvil.server.no_loading_indicator:
@@ -2182,7 +2244,7 @@ class Form1(Form1Template):
                 self._mem_docs_body.add_component(nav)
         except Exception as e:
             self._mem_docs_body.clear()
-            self._mem_docs_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._mem_docs_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _do_collection_search(self):
         if not self._memory_selected_coll:
@@ -2192,13 +2254,13 @@ class Form1(Form1Template):
             self._load_collection_docs(0)
             return
         self._mem_docs_body.clear()
-        self._mem_docs_body.add_component(Label(text='Searching\u2026', role='body', font_size=16))
+        self._mem_docs_body.add_component(Label(text='Searching\u2026', role='body', font_size=18))
         try:
             with anvil.server.no_loading_indicator:
                 results = anvil.server.call('search_collection', self._memory_selected_coll, query)
             self._mem_docs_body.clear()
             if not results:
-                self._mem_docs_body.add_component(Label(text='No results.', role='body', font_size=16))
+                self._mem_docs_body.add_component(Label(text='No results.', role='body', font_size=18))
                 return
             self._mem_docs_body.add_component(
                 Label(text=f'{len(results)} result(s) for "{query}"', role='body', font_size=14)
@@ -2212,7 +2274,7 @@ class Form1(Form1Template):
                 self._mem_docs_body.add_component(card)
         except Exception as e:
             self._mem_docs_body.clear()
-            self._mem_docs_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._mem_docs_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _build_doc_card(self, doc, collection):
         doc_id = doc['id']
@@ -2261,7 +2323,7 @@ class Form1(Form1Template):
 
     def _load_supabase_table(self, table):
         self._mem_supabase_body.clear()
-        self._mem_supabase_body.add_component(Label(text=f'Loading {table}\u2026', role='body', font_size=16))
+        self._mem_supabase_body.add_component(Label(text=f'Loading {table}\u2026', role='body', font_size=18))
         try:
             with anvil.server.no_loading_indicator:
                 rows = anvil.server.call('get_table_rows', table)
@@ -2270,7 +2332,7 @@ class Form1(Form1Template):
                 Label(text=f'{table} — {len(rows)} row(s)', bold=True, role='body', font_size=14)
             )
             if not rows:
-                self._mem_supabase_body.add_component(Label(text='No rows.', role='body', font_size=16))
+                self._mem_supabase_body.add_component(Label(text='No rows.', role='body', font_size=18))
                 return
             for row in rows:
                 card = ColumnPanel(role='outlined-card')
@@ -2311,13 +2373,13 @@ class Form1(Form1Template):
                 self._mem_supabase_body.add_component(card)
         except Exception as e:
             self._mem_supabase_body.clear()
-            self._mem_supabase_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._mem_supabase_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     # ── Research tab ─────────────────────────────────────────────────────────
 
     def _build_research_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Research', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Research', role='title', bold=True, font_size=22))
         self._research_run_btn = Button(text='▶ Run research', role='tonal-button')
         self._research_run_btn.set_event_handler('click', self._research_run_clicked)
         hdr.add_component(self._research_run_btn)
@@ -2341,7 +2403,7 @@ class Form1(Form1Template):
         self._research_articles_body = ColumnPanel()
         self._research_panel.add_component(self._research_articles_body)
 
-        self._research_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+        self._research_panel.add_component(Label(text='―' * 20, role='body', font_size=18))
 
         fb_row = FlowPanel(spacing_above='small', spacing_below='small')
 
@@ -2389,9 +2451,9 @@ class Form1(Form1Template):
 
         self._research_panel.add_component(fb_row)
 
-        self._research_panel.add_component(Label(text='―' * 20, role='body', font_size=16))
+        self._research_panel.add_component(Label(text='―' * 20, role='body', font_size=18))
         fb_hist_hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        fb_hist_hdr.add_component(Label(text='Feedback History', bold=True, role='body', font_size=16))
+        fb_hist_hdr.add_component(Label(text='Feedback History', bold=True, role='body', font_size=18))
         fb_hist_refresh = Button(text='↻', role='text-button')
         fb_hist_refresh.set_event_handler('click', lambda **kw: self._load_feedback_threads())
         fb_hist_hdr.add_component(fb_hist_refresh)
@@ -2421,7 +2483,7 @@ class Form1(Form1Template):
 
         self._research_articles_body.clear()
         self._research_articles_body.add_component(
-            Label(text='Loading articles…', role='body', font_size=16)
+            Label(text='Loading articles…', role='body', font_size=18)
         )
         try:
             with anvil.server.no_loading_indicator:
@@ -2431,7 +2493,7 @@ class Form1(Form1Template):
         except Exception as e:
             self._research_articles_body.clear()
             self._research_articles_body.add_component(
-                Label(text=f'Error: {e}', role='body', font_size=16)
+                Label(text=f'Error: {e}', role='body', font_size=18)
             )
         self._load_feedback_threads()
 
@@ -2439,7 +2501,7 @@ class Form1(Form1Template):
         self._research_articles_body.clear()
         if not articles:
             self._research_articles_body.add_component(
-                Label(text='No articles yet. Press "▶ Run research" to fetch some.', role='body', font_size=16)
+                Label(text='No articles yet. Press "▶ Run research" to fetch some.', role='body', font_size=18)
             )
             return
 
@@ -2798,7 +2860,7 @@ class Form1(Form1Template):
 
     def _build_artifacts_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Artifacts', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Artifacts', role='title', bold=True, font_size=22))
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._reload_artifacts())
         hdr.add_component(ref_btn)
@@ -2827,7 +2889,7 @@ class Form1(Form1Template):
 
     def _load_artifacts(self):
         self._artifacts_body.clear()
-        self._artifacts_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        self._artifacts_body.add_component(Label(text='Loading\u2026', role='body', font_size=18))
         try:
             with anvil.server.no_loading_indicator:
                 meta = anvil.server.call('get_artifact_agents')
@@ -2845,7 +2907,7 @@ class Form1(Form1Template):
                 self._artifacts_body.add_component(self._build_artifact_row(artifact))
         except Exception as e:
             self._artifacts_body.clear()
-            self._artifacts_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._artifacts_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _build_artifact_filters(self, meta):
         self._artifacts_filter_row.clear()
@@ -2983,7 +3045,7 @@ class Form1(Form1Template):
 
     def _build_grader_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Grader Reviews', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Grader Reviews', role='title', bold=True, font_size=22))
         ref_btn = Button(text='↻', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._reload_grader())
         hdr.add_component(ref_btn)
@@ -3035,7 +3097,7 @@ class Form1(Form1Template):
             hdr_row = FlowPanel(spacing_above='none', spacing_below='none')
             hdr_row.add_component(Label(
                 text=f"{icon} {rv.get('card_id', '?')} — {rv.get('verdict', '?').upper()}",
-                role='title', bold=True, font_size=16,
+                role='title', bold=True, font_size=18,
             ))
             if reviewed:
                 hdr_row.add_component(Label(text=' ✓ Bill reviewed', role='body', font_size=13))
@@ -3115,7 +3177,7 @@ class Form1(Form1Template):
 
     def _build_skills_layout(self):
         hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Skills', role='title', bold=True, font_size=20))
+        hdr.add_component(Label(text='Skills', role='title', bold=True, font_size=22))
         ref_btn = Button(text='\u21bb', role='text-button')
         ref_btn.set_event_handler('click', lambda **kw: self._reload_skills())
         hdr.add_component(ref_btn)
@@ -3143,7 +3205,7 @@ class Form1(Form1Template):
 
     def _load_skills(self):
         self._skills_body.clear()
-        self._skills_body.add_component(Label(text='Loading\u2026', role='body', font_size=16))
+        self._skills_body.add_component(Label(text='Loading\u2026', role='body', font_size=18))
         try:
             with anvil.server.no_loading_indicator:
                 skills = anvil.server.call('get_skills')
@@ -3155,7 +3217,7 @@ class Form1(Form1Template):
                 self._skills_body.add_component(self._build_skill_card(skill))
         except Exception as e:
             self._skills_body.clear()
-            self._skills_body.add_component(Label(text=f'Error: {e}', role='body', font_size=16))
+            self._skills_body.add_component(Label(text=f'Error: {e}', role='body', font_size=18))
 
     def _build_skill_card(self, skill):
         name = skill.get('name', '')
@@ -3165,7 +3227,7 @@ class Form1(Form1Template):
         last_loaded = (skill.get('last_loaded') or '')[:10] or 'never'
 
         card = ColumnPanel(role='outlined-card')
-        card.add_component(Label(text=name, bold=True, role='body', font_size=16))
+        card.add_component(Label(text=name, bold=True, role='body', font_size=18))
         meta = f'loaded: {times_loaded}  |  last: {last_loaded}'
         card.add_component(Label(text=meta, role='body', font_size=13))
 
@@ -3196,7 +3258,7 @@ class Form1(Form1Template):
                 result = anvil.server.call('get_skill', name)
             self._skill_detail_panel.clear()
             hdr = FlowPanel(spacing_above='small', spacing_below='none')
-            hdr.add_component(Label(text=result['name'], bold=True, role='body', font_size=16))
+            hdr.add_component(Label(text=result['name'], bold=True, role='body', font_size=18))
             close_btn = Button(text='\u00d7', role='text-button')
             close_btn.set_event_handler('click', lambda **kw: self._skill_detail_panel.clear())
             hdr.add_component(close_btn)
@@ -3320,63 +3382,26 @@ class Form1(Form1Template):
     def _refresh_clicked(self, **event_args):
         self.refresh_data()
 
-    # ── Workspace tab (B-120) ─────────────────────────────────────────────────
+    # ── Home tab helpers ──────────────────────────────────────────────────────
 
-    def _build_workspace_layout(self):
-        hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text="Workspace", role='title', bold=True, font_size=20))
-        self._workspace_export_btn = Button(text='⬇ Export working bundle', role='tonal-button')
-        self._workspace_export_btn.set_event_handler('click', self._workspace_export_clicked)
-        hdr.add_component(self._workspace_export_btn)
-        self._workspace_audit_export_btn = Button(text='⬇ Export audit bundle', role='tonal-button')
-        self._workspace_audit_export_btn.set_event_handler('click', self._workspace_audit_export_clicked)
-        hdr.add_component(self._workspace_audit_export_btn)
-        self._workspace_panel.add_component(hdr)
-
-        self._workspace_export_fb = Label(text='', role='body', font_size=13)
-        self._workspace_panel.add_component(self._workspace_export_fb)
-        self._workspace_export_fallback = ColumnPanel()
-        self._workspace_export_fallback.visible = False
-        self._workspace_panel.add_component(self._workspace_export_fallback)
-
-        self._workspace_audit_export_fb = Label(text='', role='body', font_size=13)
-        self._workspace_panel.add_component(self._workspace_audit_export_fb)
-        self._workspace_audit_export_fallback = ColumnPanel()
-        self._workspace_audit_export_fallback.visible = False
-        self._workspace_panel.add_component(self._workspace_audit_export_fallback)
-
-        note_row = FlowPanel(spacing_above='small', spacing_below='none')
-        self._workspace_note_input = TextArea(placeholder="What's on your mind?", height=80)
-        self._workspace_add_btn = Button(text='Add note', role='filled-button')
-        self._workspace_add_fb = Label(text='', role='body', font_size=13)
-        self._workspace_add_btn.set_event_handler('click', self._workspace_add_note_clicked)
-        note_row.add_component(self._workspace_note_input)
-        note_row.add_component(self._workspace_add_btn)
-        self._workspace_panel.add_component(note_row)
-        self._workspace_panel.add_component(self._workspace_add_fb)
-
-        self._workspace_panel.add_component(Label(text='Unaddressed notes:', role='body', bold=True, font_size=14))
-        self._workspace_notes_panel = ColumnPanel()
-        self._workspace_panel.add_component(self._workspace_notes_panel)
-
-    def _load_workspace_notes(self):
-        self._workspace_notes_panel.clear()
+    def _load_home_notes(self):
+        self._home_notes_panel.clear()
         try:
             with anvil.server.no_loading_indicator:
                 notes = anvil.server.call('get_bill_notes')
         except Exception as e:
-            self._workspace_notes_panel.add_component(Label(text=f'❌ {e}', role='body', font_size=13))
+            self._home_notes_panel.add_component(Label(text=f'❌ {e}', role='body', font_size=18))
             return
         if not notes:
-            self._workspace_notes_panel.add_component(Label(text='No unaddressed notes.', role='body', font_size=13))
+            self._home_notes_panel.add_component(Label(text='No unaddressed notes.', role='body', font_size=18))
             return
         for note in notes:
-            self._workspace_notes_panel.add_component(self._make_note_row(note))
+            self._home_notes_panel.add_component(self._make_note_row(note))
 
     def _make_note_row(self, note):
         row = FlowPanel(spacing_above='none', spacing_below='none')
         ts = (note.get('created_at') or '')[:10]
-        row.add_component(Label(text=f"[{ts}] {note.get('content','')}", role='body', font_size=13))
+        row.add_component(Label(text=f"[{ts}] {note.get('content','')}", role='body', font_size=18))
         btn = Button(text='Mark addressed', role='outlined-button')
         note_id = note.get('id')
         def _mark(note_id=note_id, row=row, **kw):
@@ -3385,29 +3410,36 @@ class Form1(Form1Template):
                     anvil.server.call('mark_bill_note_addressed', note_id)
                 row.visible = False
             except Exception as e:
-                self._workspace_add_fb.text = f'❌ {e}'
+                self._home_add_note_fb.text = f'❌ {e}'
         btn.set_event_handler('click', _mark)
         row.add_component(btn)
         return row
 
-    def _workspace_add_note_clicked(self, **event_args):
-        text = self._workspace_note_input.text or ''
+    def _home_add_note_clicked(self, **event_args):
+        text = self._home_note_input.text or ''
         if not text.strip():
-            self._workspace_add_fb.text = '❌ Note is empty.'
+            self._home_add_note_fb.text = '❌ Note is empty.'
             return
-        self._workspace_add_fb.text = 'Saving...'
+        self._home_add_note_fb.text = 'Saving...'
         try:
             anvil.server.call('add_bill_note', text.strip())
-            self._workspace_note_input.text = ''
-            self._workspace_add_fb.text = '✅ Saved.'
-            self._workspace_loaded = False
-            self._load_workspace_notes()
-            self._workspace_loaded = True
+            self._home_note_input.text = ''
+            self._home_add_note_fb.text = '✅ Saved.'
+            self._load_home_notes()
         except Exception as e:
-            self._workspace_add_fb.text = f'❌ {e}'
+            self._home_add_note_fb.text = f'❌ {e}'
 
-    def _workspace_export_clicked(self, **event_args):
-        self._run_export('get_working_bundle', self._workspace_export_fb, self._workspace_export_fallback)
+    def _home_export_working_clicked(self, **event_args):
+        self._run_export('get_working_bundle', self._home_export_fb, self._home_export_fallback)
 
-    def _workspace_audit_export_clicked(self, **event_args):
-        self._run_export('get_audit_bundle', self._workspace_audit_export_fb, self._workspace_audit_export_fallback)
+    def _home_export_audit_clicked(self, **event_args):
+        self._run_export('get_audit_bundle', self._home_export_fb, self._home_export_fallback)
+
+    def _update_home_status_strip(self):
+        n_agents = self._home_active_agents
+        n_queue = self._home_queue_pending
+        n_inbox = self._home_inbox_count
+        self._home_health_lbl.text = '🟢' if n_inbox == 0 else '🟡'
+        self._home_agents_lbl.text = str(n_agents)
+        self._home_queue_lbl.text = str(n_queue)
+        self._home_inbox_badge.text = f'⚠️ {n_inbox}' if n_inbox > 0 else '0'
