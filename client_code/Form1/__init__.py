@@ -283,10 +283,73 @@ class Form1(Form1Template):
         self._build_controls(self._home_panel)
 
     def _build_workpad_layout(self):
-        self._workpad_panel.add_component(Label(
-            text='Workpad — coming in B-128. This will be a lightweight investigation surface for exploring questions before they become threads.',
-            role='body', font_size=18,
-        ))
+        self._wp_dirty = [False]
+
+        # Input region
+        self._workpad_panel.add_component(Label(text='Input', role='title', font_size=20))
+        self._wp_input = TextArea(
+            placeholder='Paste content, notes, or questions here…',
+            height=180, font_size=16,
+        )
+        self._wp_input.set_event_handler('change', self._wp_input_changed)
+        self._workpad_panel.add_component(self._wp_input)
+
+        url_row = FlowPanel(spacing_above='small', spacing_below='small')
+        url_row.add_component(Label(text='URL:', role='body', font_size=16))
+        self._wp_url = TextBox(placeholder='https://…', font_size=16)
+        self._wp_url.set_event_handler('change', self._wp_input_changed)
+        url_row.add_component(self._wp_url)
+        self._workpad_panel.add_component(url_row)
+
+        # Actions region
+        actions_row = FlowPanel(spacing_above='small', spacing_below='small')
+        self._wp_read_btn = Button(text='Read URL', role='filled-button')
+        self._wp_read_btn.set_event_handler('click', self._wp_read_url)
+        self._wp_copy_btn = Button(text='Copy', role='tonal-button')
+        self._wp_copy_btn.set_event_handler('click', self._wp_copy)
+        self._wp_clear_btn = Button(text='Clear', role='outlined-button')
+        self._wp_clear_btn.set_event_handler('click', self._wp_clear)
+        self._wp_promote_btn = Button(text='Promote to thread', role='tonal-button')
+        self._wp_promote_btn.set_event_handler('click', self._wp_show_promote_form)
+        for btn in [self._wp_read_btn, self._wp_copy_btn, self._wp_clear_btn, self._wp_promote_btn]:
+            actions_row.add_component(btn)
+        self._workpad_panel.add_component(actions_row)
+
+        self._wp_fb = Label(text='', role='body', font_size=14)
+        self._workpad_panel.add_component(self._wp_fb)
+        self._wp_copy_fallback = ColumnPanel()
+        self._wp_copy_fallback.visible = False
+        self._workpad_panel.add_component(self._wp_copy_fallback)
+
+        # Promote mini-form (hidden until button clicked)
+        self._wp_promote_form = ColumnPanel()
+        self._wp_promote_form.visible = False
+        self._wp_promote_form.add_component(Label(text='New thread', role='title', font_size=20))
+        self._wp_promote_title = TextBox(placeholder='Thread title', font_size=16)
+        self._wp_promote_question = TextBox(placeholder='Opening question', font_size=16)
+        promote_btns = FlowPanel(spacing_above='small', spacing_below='small')
+        self._wp_confirm_btn = Button(text='Confirm', role='filled-button')
+        self._wp_confirm_btn.set_event_handler('click', self._wp_confirm_promote)
+        self._wp_cancel_btn = Button(text='Cancel', role='outlined-button')
+        self._wp_cancel_btn.set_event_handler('click', self._wp_cancel_promote)
+        promote_btns.add_component(self._wp_confirm_btn)
+        promote_btns.add_component(self._wp_cancel_btn)
+        self._wp_promote_fb = Label(text='', role='body', font_size=14)
+        self._wp_promote_form.add_component(self._wp_promote_title)
+        self._wp_promote_form.add_component(self._wp_promote_question)
+        self._wp_promote_form.add_component(promote_btns)
+        self._wp_promote_form.add_component(self._wp_promote_fb)
+        self._workpad_panel.add_component(self._wp_promote_form)
+
+        # Output region
+        self._workpad_panel.add_component(Label(text='Output', role='title', font_size=20))
+        self._wp_output_panel = ColumnPanel()
+        self._workpad_panel.add_component(self._wp_output_panel)
+
+        # Auto-save: fires every 2s, saves only when dirty
+        self._wp_save_timer = Timer(interval=2)
+        self._wp_save_timer.set_event_handler('tick', self._wp_autosave)
+        self._workpad_panel.add_component(self._wp_save_timer)
 
     def _build_fleet_inner(self, panel):
         fleet_hdr = FlowPanel(spacing_above='small', spacing_below='small')
@@ -461,6 +524,9 @@ class Form1(Form1Template):
 
     def _show_workpad_tab(self, **event_args):
         self._set_tab('workpad')
+        if not getattr(self, '_workpad_loaded', False):
+            self._workpad_loaded = True
+            self._wp_load_state()
 
     def _show_threads_tab(self, **event_args):
         self._set_tab('threads')
@@ -3443,3 +3509,145 @@ class Form1(Form1Template):
         self._home_agents_lbl.text = str(n_agents)
         self._home_queue_lbl.text = str(n_queue)
         self._home_inbox_badge.text = f'⚠️ {n_inbox}' if n_inbox > 0 else '0'
+
+    # ── Workpad tab ───────────────────────────────────────────────────────────
+
+    def _wp_input_changed(self, **event_args):
+        self._wp_dirty[0] = True
+
+    def _wp_autosave(self, **event_args):
+        if self._wp_dirty[0]:
+            self._wp_dirty[0] = False
+            try:
+                with anvil.server.no_loading_indicator:
+                    anvil.server.call('save_workpad_input', self._wp_input.text or '', self._wp_url.text or '')
+            except Exception:
+                pass
+
+    def _wp_do_save(self):
+        self._wp_dirty[0] = False
+        try:
+            with anvil.server.no_loading_indicator:
+                anvil.server.call('save_workpad_input', self._wp_input.text or '', self._wp_url.text or '')
+        except Exception:
+            pass
+
+    def _wp_load_state(self):
+        try:
+            state = anvil.server.call('get_workpad_state')
+            self._wp_input.text = state.get('input_text', '')
+            self._wp_url.text = state.get('attach_url', '')
+            self._wp_render_output(state.get('output_entries', []))
+        except Exception as e:
+            self._wp_fb.text = f'❌ Load failed: {e}'
+
+    def _wp_render_output(self, entries):
+        self._wp_output_panel.clear()
+        if not entries:
+            self._wp_output_panel.add_component(Label(text='No output yet.', role='body', font_size=14))
+            return
+        for entry in reversed(entries):
+            action = entry.get('action', '')
+            result = entry.get('result', '')
+            ts = entry.get('timestamp', '')
+            card = ColumnPanel()
+            card.add_component(Label(
+                text=f'{_rel_time(ts)} — {action}',
+                role='body', font_size=13, bold=True,
+            ))
+            truncated = result[:600] + ('…' if len(result) > 600 else '')
+            body_lbl = Label(text=truncated, role='body', font_size=14)
+            card.add_component(body_lbl)
+            if len(result) > 600:
+                full_lbl = Label(text=result, role='body', font_size=14, visible=False)
+                expand_btn = Button(text='Show more', role='tonal-button', font_size=12)
+                card.add_component(full_lbl)
+                def _make_expand(e_btn, f_lbl):
+                    def _toggle(**kw):
+                        f_lbl.visible = not f_lbl.visible
+                        e_btn.text = 'Show less' if f_lbl.visible else 'Show more'
+                    return _toggle
+                expand_btn.set_event_handler('click', _make_expand(expand_btn, full_lbl))
+                card.add_component(expand_btn)
+            self._wp_output_panel.add_component(card)
+
+    def _wp_read_url(self, **event_args):
+        self._wp_do_save()
+        url = (self._wp_url.text or '').strip()
+        if not url:
+            self._wp_fb.text = '❌ No URL entered.'
+            return
+        self._wp_fb.text = 'Fetching…'
+        self._wp_read_btn.enabled = False
+        try:
+            anvil.server.call('fetch_url_content', url)
+            state = anvil.server.call('get_workpad_state')
+            self._wp_render_output(state.get('output_entries', []))
+            self._wp_fb.text = '✅ Fetched.'
+        except Exception as e:
+            self._wp_fb.text = f'❌ {e}'
+        finally:
+            self._wp_read_btn.enabled = True
+
+    def _wp_copy(self, **event_args):
+        self._wp_do_save()
+        text = self._wp_input.text or ''
+        self._wp_copy_fallback.visible = False
+        copied = False
+        try:
+            anvil.js.window.navigator.clipboard.writeText(text)
+            copied = True
+        except Exception:
+            pass
+        if copied:
+            self._wp_fb.text = '✅ Copied to clipboard.'
+        else:
+            self._wp_fb.text = '📋 Clipboard unavailable — text below:'
+            self._wp_copy_fallback.clear()
+            self._wp_copy_fallback.add_component(TextArea(text=text, height=120, enabled=True))
+            self._wp_copy_fallback.visible = True
+
+    def _wp_clear(self, **event_args):
+        if not anvil.js.window.confirm('Clear all workpad content?'):
+            return
+        self._wp_fb.text = 'Clearing…'
+        try:
+            anvil.server.call('clear_workpad')
+            self._wp_input.text = ''
+            self._wp_url.text = ''
+            self._wp_dirty[0] = False
+            self._wp_copy_fallback.visible = False
+            self._wp_render_output([])
+            self._wp_fb.text = '✅ Cleared.'
+        except Exception as e:
+            self._wp_fb.text = f'❌ {e}'
+
+    def _wp_show_promote_form(self, **event_args):
+        self._wp_do_save()
+        self._wp_promote_title.text = ''
+        self._wp_promote_question.text = ''
+        self._wp_promote_fb.text = ''
+        self._wp_promote_form.visible = True
+
+    def _wp_cancel_promote(self, **event_args):
+        self._wp_promote_form.visible = False
+
+    def _wp_confirm_promote(self, **event_args):
+        title = (self._wp_promote_title.text or '').strip()
+        question = (self._wp_promote_question.text or '').strip()
+        if not title:
+            self._wp_promote_fb.text = '❌ Title is required.'
+            return
+        if not question:
+            self._wp_promote_fb.text = '❌ Question is required.'
+            return
+        self._wp_promote_fb.text = 'Creating thread…'
+        self._wp_confirm_btn.enabled = False
+        try:
+            result = anvil.server.call('promote_workpad_to_thread', title, question)
+            self._wp_promote_form.visible = False
+            self._wp_fb.text = f'✅ Thread "{result.get("title", title)}" created — navigate to Threads tab to view.'
+        except Exception as e:
+            self._wp_promote_fb.text = f'❌ {e}'
+        finally:
+            self._wp_confirm_btn.enabled = True
