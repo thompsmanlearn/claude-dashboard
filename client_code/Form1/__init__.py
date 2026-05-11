@@ -177,49 +177,42 @@ class Form1(Form1Template):
         self.content_panel.add_component(self._system_panel)
 
     def _build_controls(self, panel):
-        panel.add_component(Label(text='Lean Session', bold=True, role='body', font_size=18))
-
+        # Row 1: Lean trigger + Autonomous toggle (inline)
+        ctrl_row = FlowPanel(spacing_above='none', spacing_below='none')
         self._lean_trigger_btn = Button(text='Trigger Lean Session', role='tonal-button')
         self._lean_trigger_btn.set_event_handler('click', self._trigger_lean_clicked)
-        panel.add_component(self._lean_trigger_btn)
-        self._lean_feedback = Label(text='', role='body', font_size=18)
-        panel.add_component(self._lean_feedback)
+        ctrl_row.add_component(self._lean_trigger_btn)
+        self._lean_feedback = Label(text='', role='body', font_size=14)
+        ctrl_row.add_component(self._lean_feedback)
 
-        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
+        self._auto_btn = Button(text='\u23f3 Checking\u2026', role='tonal-button')
+        self._auto_btn.set_event_handler('click', self._auto_mode_clicked)
+        ctrl_row.add_component(self._auto_btn)
+        refresh_auto_btn = Button(text='\u21bb', role='text-button')
+        refresh_auto_btn.set_event_handler('click', lambda **kw: self._refresh_auto_status())
+        ctrl_row.add_component(refresh_auto_btn)
+        self._auto_feedback = Label(text='', role='body', font_size=14)
+        ctrl_row.add_component(self._auto_feedback)
+        panel.add_component(ctrl_row)
 
-        panel.add_component(Label(text='Write Directive', bold=True, role='body', font_size=18))
-        panel.add_component(Label(text='Overwrites DIRECTIVES.md and pushes to claudis.', role='body', font_size=18))
+        # Row 2: Directive textarea + button
+        dir_row = FlowPanel(spacing_above='none', spacing_below='none')
+        dir_row.add_component(Label(text='Directive:', role='body', font_size=14))
         self._directive_input = TextArea(
             placeholder='e.g. "Run: B-032" or free text',
             role='outlined',
-            height=80,
+            height=60,
         )
-        panel.add_component(self._directive_input)
-        dir_btn = Button(text='Write Directive', role='tonal-button')
+        dir_row.add_component(self._directive_input)
+        dir_btn = Button(text='Write', role='tonal-button')
         dir_btn.set_event_handler('click', self._write_directive_clicked)
-        panel.add_component(dir_btn)
-        self._directive_feedback = Label(text='', role='body', font_size=18)
-        panel.add_component(self._directive_feedback)
-
-        panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
-
-        panel.add_component(Label(text='Autonomous Mode', bold=True, role='body', font_size=18))
-        panel.add_component(Label(text='Toggles growth scheduler + lean auto-cycle.', role='body', font_size=18))
-
-        auto_row = FlowPanel(spacing_above='none', spacing_below='small')
-        self._auto_btn = Button(text='\u23f3 Checking\u2026', role='tonal-button')
-        self._auto_btn.set_event_handler('click', self._auto_mode_clicked)
-        auto_row.add_component(self._auto_btn)
-        refresh_auto_btn = Button(text='\u21bb', role='text-button')
-        refresh_auto_btn.set_event_handler('click', lambda **kw: self._refresh_auto_status())
-        auto_row.add_component(refresh_auto_btn)
-        panel.add_component(auto_row)
-
-        self._auto_feedback = Label(text='', role='body', font_size=18)
-        panel.add_component(self._auto_feedback)
+        dir_row.add_component(dir_btn)
+        self._directive_feedback = Label(text='', role='body', font_size=14)
+        dir_row.add_component(self._directive_feedback)
+        panel.add_component(dir_row)
 
     def _build_home_layout(self):
-        # ── Status strip ─────────────────────────────────────────────────────
+        # 1. Status strip
         strip = FlowPanel(spacing_above='small', spacing_below='small')
         self._home_health_lbl = Label(text='⏳', font_size=24, bold=True)
         self._home_agents_lbl = Label(text='—', font_size=24)
@@ -234,53 +227,49 @@ class Form1(Form1Template):
         strip.add_component(self._home_inbox_badge)
         self._home_panel.add_component(strip)
 
-        # ── Primary action buttons ────────────────────────────────────────────
-        actions = FlowPanel(spacing_above='small', spacing_below='small')
+        # 2. Primary action buttons
+        actions = FlowPanel(spacing_above='none', spacing_below='none')
         _write_note_btn = Button(text='Write note', role='tonal-button')
         _write_dir_btn = Button(text='Write directive', role='tonal-button')
         self._home_export_working_btn = Button(text='⬇ Export working bundle', role='tonal-button')
         self._home_export_audit_btn = Button(text='⬇ Export audit bundle', role='tonal-button')
-        _write_note_btn.set_event_handler('click', lambda **kw: setattr(self._home_add_note_fb, 'text', '↓ Note input below'))
-        _write_dir_btn.set_event_handler('click', lambda **kw: setattr(self._directive_feedback, 'text', '↓ Directive input below'))
+        _write_note_btn.set_event_handler('click', lambda **kw: setattr(self._home_add_note_fb, 'text', '↓ below'))
+        _write_dir_btn.set_event_handler('click', lambda **kw: setattr(self._directive_feedback, 'text', '↓ below'))
         self._home_export_working_btn.set_event_handler('click', self._home_export_working_clicked)
         self._home_export_audit_btn.set_event_handler('click', self._home_export_audit_clicked)
-        actions.add_component(_write_note_btn)
-        actions.add_component(_write_dir_btn)
-        actions.add_component(self._home_export_working_btn)
-        actions.add_component(self._home_export_audit_btn)
+        for b in [_write_note_btn, _write_dir_btn, self._home_export_working_btn, self._home_export_audit_btn]:
+            actions.add_component(b)
         self._home_panel.add_component(actions)
-        self._home_export_fb = Label(text='', role='body', font_size=18)
+        self._home_export_fb = Label(text='', role='body', font_size=14)
         self._home_export_fallback = ColumnPanel()
         self._home_export_fallback.visible = False
         self._home_panel.add_component(self._home_export_fb)
         self._home_panel.add_component(self._home_export_fallback)
 
-        # ── Write note ────────────────────────────────────────────────────────
-        self._home_panel.add_component(Label(text='―' * 20, role='body', font_size=11))
-        self._home_panel.add_component(Label(text='Note', bold=True, role='body', font_size=18))
+        # 3. Compact controls: lean trigger + auto toggle + directive
+        self._build_controls(self._home_panel)
+
+        # 4. Note input
         note_row = FlowPanel(spacing_above='none', spacing_below='none')
-        self._home_note_input = TextArea(placeholder="What's on your mind?", height=80)
+        self._home_note_input = TextArea(placeholder="What's on your mind?", height=70)
         self._home_add_note_btn = Button(text='Add note', role='filled-button')
         self._home_add_note_btn.set_event_handler('click', self._home_add_note_clicked)
         note_row.add_component(self._home_note_input)
         note_row.add_component(self._home_add_note_btn)
         self._home_panel.add_component(note_row)
-        self._home_add_note_fb = Label(text='', role='body', font_size=18)
+        self._home_add_note_fb = Label(text='', role='body', font_size=14)
         self._home_panel.add_component(self._home_add_note_fb)
-        self._home_panel.add_component(Label(text='Unaddressed notes:', bold=True, role='body', font_size=18))
+
+        # 5. Unaddressed notes
+        self._home_panel.add_component(Label(text='Unaddressed notes', bold=True, role='body', font_size=16))
         self._home_notes_panel = ColumnPanel()
         self._home_panel.add_component(self._home_notes_panel)
 
-        # ── Inbox ─────────────────────────────────────────────────────────────
-        self._home_panel.add_component(Label(text='―' * 20, role='body', font_size=11))
-        self._home_inbox_lbl = Label(text='Pending Inbox', bold=True, role='body', font_size=18)
+        # 6. Pending inbox
+        self._home_inbox_lbl = Label(text='Pending Inbox', bold=True, role='body', font_size=16)
         self._home_panel.add_component(self._home_inbox_lbl)
         self._home_inbox_body = ColumnPanel()
         self._home_panel.add_component(self._home_inbox_body)
-
-        # ── Controls (Lean Session, Write Directive, Autonomous Mode) ─────────
-        self._home_panel.add_component(Label(text='―' * 20, role='body', font_size=11))
-        self._build_controls(self._home_panel)
 
     def _build_workpad_layout(self):
         self._wp_dirty = [False]
