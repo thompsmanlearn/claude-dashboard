@@ -183,6 +183,9 @@ class Form1(Form1Template):
         self._lean_trigger_btn = Button(text='Trigger Lean Session', role='tonal-button')
         self._lean_trigger_btn.set_event_handler('click', self._trigger_lean_clicked)
         ctrl_row.add_component(self._lean_trigger_btn)
+        self._close_session_btn = Button(text='Request Close', role='outlined-button')
+        self._close_session_btn.set_event_handler('click', self._request_close_clicked)
+        ctrl_row.add_component(self._close_session_btn)
         self._lean_feedback = Label(text='', role='body', font_size=14)
         ctrl_row.add_component(self._lean_feedback)
 
@@ -3449,6 +3452,7 @@ class Form1(Form1Template):
     def _trigger_lean_clicked(self, **event_args):
         self._lean_feedback.text = 'Starting...'
         self._lean_trigger_btn.enabled = False
+        self._close_session_btn.enabled = True
         if self._lean_poll_timer is not None:
             self._lean_poll_timer.interval = 0
             self._lean_poll_timer = None
@@ -3487,6 +3491,15 @@ class Form1(Form1Template):
         tmr.set_event_handler('tick', _on_lean_tick)
         self._home_panel.add_component(tmr)
         self._refresh_lean_status()
+
+    def _request_close_clicked(self, **event_args):
+        try:
+            with anvil.server.no_loading_indicator:
+                anvil.server.call('request_close_session')
+            self._lean_feedback.text = '\U0001f512 Close requested — runs after session completes'
+            self._close_session_btn.enabled = False
+        except Exception as e:
+            self._lean_feedback.text = f'❌ Error: {e}'
 
     def _write_directive_clicked(self, **event_args):
         text = self._directive_input.text or ''
