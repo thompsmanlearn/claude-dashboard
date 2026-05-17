@@ -250,26 +250,38 @@ class Form1(Form1Template):
         self._bill_input_fb = Label(text='', role='body', font_size=14)
         bill_submit_row.add_component(self._bill_input_fb)
         self._home_panel.add_component(bill_submit_row)
-        self._bill_response_panel = ColumnPanel()
         self._bill_response_lbl = Label(text='', role='body', font_size=14)
-        bill_resp_row = FlowPanel(spacing_above='none', spacing_below='none')
-        bill_check_btn = Button(text='Get Output', role='tonal-button')
-        bill_check_btn.set_event_handler('click', self._bill_check_response_clicked)
         self._bill_copy_btn = Button(text='Copy', role='outlined-button')
         self._bill_copy_btn.set_event_handler('click', self._bill_copy_response_clicked)
-        bill_resp_row.add_component(bill_check_btn)
-        bill_resp_row.add_component(self._bill_copy_btn)
-        self._bill_response_panel.add_component(bill_resp_row)
-        self._bill_response_panel.add_component(self._bill_response_lbl)
-        self._home_panel.add_component(self._bill_response_panel)
+        bill_check_btn = Button(text='Get Output', role='tonal-button')
+        bill_check_btn.set_event_handler('click', self._bill_check_response_clicked)
+        self._home_panel.add_component(bill_check_btn)
+        # Collapsible output panel — collapsed by default
+        bill_output_hdr = FlowPanel(spacing_above='small', spacing_below='none')
+        self._bill_output_toggle = Button(text='Session Output ▸', role='text-button')
+        bill_output_hdr.add_component(self._bill_output_toggle)
+        self._home_panel.add_component(bill_output_hdr)
+        self._bill_output_body = ColumnPanel()
+        self._bill_output_body.visible = False
+        bill_copy_row = FlowPanel(spacing_above='none', spacing_below='none')
+        bill_copy_row.add_component(self._bill_copy_btn)
+        self._bill_output_body.add_component(bill_copy_row)
+        self._bill_output_body.add_component(self._bill_response_lbl)
+        self._home_panel.add_component(self._bill_output_body)
 
-        # 3. Primary action buttons
+        def _toggle_bill_output(**kw):
+            self._bill_output_body.visible = not self._bill_output_body.visible
+            self._bill_output_toggle.text = 'Session Output ▾' if self._bill_output_body.visible else 'Session Output ▸'
+
+        self._bill_output_toggle.set_event_handler('click', _toggle_bill_output)
+
+        # 3. Primary action buttons — single horizontal row
         actions = FlowPanel(spacing_above='none', spacing_below='none')
         _write_note_btn = Button(text='Write note', role='tonal-button')
         _write_dir_btn = Button(text='Write directive', role='tonal-button')
-        self._home_export_working_btn = Button(text='⬇ Export working bundle', role='tonal-button')
-        self._home_export_audit_btn = Button(text='⬇ Export audit bundle', role='tonal-button')
-        self._home_export_desktop_btn = Button(text='⬇ Export for Desktop Claude', role='tonal-button')
+        self._home_export_working_btn = Button(text='⬇ Working', role='tonal-button')
+        self._home_export_audit_btn = Button(text='⬇ Audit', role='tonal-button')
+        self._home_export_desktop_btn = Button(text='⬇ Desktop', role='tonal-button')
         _write_note_btn.set_event_handler('click', lambda **kw: setattr(self._home_add_note_fb, 'text', '↓ below'))
         _write_dir_btn.set_event_handler('click', lambda **kw: setattr(self._directive_feedback, 'text', '↓ below'))
         self._home_export_working_btn.set_event_handler('click', self._home_export_working_clicked)
@@ -3567,6 +3579,8 @@ class Form1(Form1Template):
         else:
             text = result.get('response') or '(no response written)'
             self._bill_response_lbl.text = text
+            self._bill_output_body.visible = True
+            self._bill_output_toggle.text = 'Session Output ▾'
             try:
                 anvil.js.window.navigator.clipboard.writeText(text)
                 self._bill_copy_btn.text = '✅ Copied'
