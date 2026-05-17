@@ -228,7 +228,43 @@ class Form1(Form1Template):
         strip.add_component(self._home_inbox_badge)
         self._home_panel.add_component(strip)
 
-        # 2. Primary action buttons
+        # 2. Bill input panel
+        self._home_panel.add_component(Label(text='Session Input', bold=True, role='body', font_size=16))
+        self._bill_input_mode = ['Question']
+        mode_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._bill_mode_q_btn = Button(text='Question', role='filled-button')
+        self._bill_mode_c_btn = Button(text='Comment', role='tonal-button')
+        self._bill_mode_cmd_btn = Button(text='Command', role='tonal-button')
+        self._bill_mode_q_btn.set_event_handler('click', lambda **kw: self._bill_mode_select('Question'))
+        self._bill_mode_c_btn.set_event_handler('click', lambda **kw: self._bill_mode_select('Comment'))
+        self._bill_mode_cmd_btn.set_event_handler('click', lambda **kw: self._bill_mode_select('Command'))
+        for b in [self._bill_mode_q_btn, self._bill_mode_c_btn, self._bill_mode_cmd_btn]:
+            mode_row.add_component(b)
+        self._home_panel.add_component(mode_row)
+        self._bill_input_text = TextArea(placeholder='Type your question, comment, or command…', height=80, width=520)
+        self._home_panel.add_component(self._bill_input_text)
+        bill_submit_row = FlowPanel(spacing_above='small', spacing_below='none')
+        self._bill_submit_btn = Button(text='Submit', role='filled-button')
+        self._bill_submit_btn.set_event_handler('click', self._bill_submit_clicked)
+        bill_submit_row.add_component(self._bill_submit_btn)
+        self._bill_input_fb = Label(text='', role='body', font_size=14)
+        bill_submit_row.add_component(self._bill_input_fb)
+        self._home_panel.add_component(bill_submit_row)
+        self._bill_response_panel = ColumnPanel()
+        self._bill_response_panel.visible = False
+        self._bill_response_lbl = Label(text='', role='body', font_size=14)
+        bill_resp_row = FlowPanel(spacing_above='none', spacing_below='none')
+        bill_check_btn = Button(text='Check response', role='tonal-button')
+        bill_check_btn.set_event_handler('click', self._bill_check_response_clicked)
+        self._bill_copy_btn = Button(text='Copy', role='outlined-button')
+        self._bill_copy_btn.set_event_handler('click', self._bill_copy_response_clicked)
+        bill_resp_row.add_component(bill_check_btn)
+        bill_resp_row.add_component(self._bill_copy_btn)
+        self._bill_response_panel.add_component(bill_resp_row)
+        self._bill_response_panel.add_component(self._bill_response_lbl)
+        self._home_panel.add_component(self._bill_response_panel)
+
+        # 3. Primary action buttons
         actions = FlowPanel(spacing_above='none', spacing_below='none')
         _write_note_btn = Button(text='Write note', role='tonal-button')
         _write_dir_btn = Button(text='Write directive', role='tonal-button')
@@ -3497,6 +3533,52 @@ class Form1(Form1Template):
 
     def _home_export_desktop_clicked(self, **event_args):
         self._run_export('get_desktop_bundle', self._home_export_fb, self._home_export_fallback)
+
+    def _bill_mode_select(self, mode):
+        self._bill_input_mode[0] = mode
+        self._bill_mode_q_btn.role = 'filled-button' if mode == 'Question' else 'tonal-button'
+        self._bill_mode_c_btn.role = 'filled-button' if mode == 'Comment' else 'tonal-button'
+        self._bill_mode_cmd_btn.role = 'filled-button' if mode == 'Command' else 'tonal-button'
+
+    def _bill_submit_clicked(self, **event_args):
+        text = (self._bill_input_text.text or '').strip()
+        if not text:
+            self._bill_input_fb.text = 'Enter text before submitting.'
+            return
+        mode = self._bill_input_mode[0]
+        try:
+            anvil.server.call('submit_bill_input', mode, text)
+        except Exception as e:
+            self._bill_input_fb.text = f'❌ {e}'
+            return
+        self._bill_input_text.text = ''
+        self._bill_input_fb.text = ''
+        self._bill_response_lbl.text = '⏳ Awaiting Claude Code response…'
+        self._bill_response_panel.visible = True
+
+    def _bill_check_response_clicked(self, **event_args):
+        try:
+            result = anvil.server.call('get_bill_input_response')
+        except Exception as e:
+            self._bill_response_lbl.text = f'❌ {e}'
+            return
+        status = result.get('status', 'none')
+        if status == 'none':
+            self._bill_response_lbl.text = 'No input on file.'
+        elif status == 'pending':
+            self._bill_response_lbl.text = '⏳ Still processing…'
+        else:
+            self._bill_response_lbl.text = result.get('response') or '(no response written)'
+
+    def _bill_copy_response_clicked(self, **event_args):
+        text = self._bill_response_lbl.text or ''
+        if not text:
+            return
+        try:
+            anvil.js.window.navigator.clipboard.writeText(text)
+            self._bill_copy_btn.text = '✅ Copied'
+        except Exception:
+            self._bill_copy_btn.text = 'Copy (failed)'
 
     def _update_home_status_strip(self):
         n_agents = self._home_active_agents
