@@ -308,17 +308,15 @@ class Form1(Form1Template):
         rb_hdr = FlowPanel(spacing_above='small', spacing_below='none')
         self._research_toggle_btn = Button(text='▶', role='text-button')
         self._research_briefing_hdr_lbl = Label(text='Research Briefing — loading…', bold=True, role='body', font_size=16)
-        self._research_run_btn = Button(text='Run Synthesis', role='tonal-button')
-        self._research_run_btn.set_event_handler('click', self._run_synthesis_clicked)
-        self._research_run_fb = Label(text='', role='body', font_size=14)
+        self._synthesis_run_btn = Button(text='Run Synthesis', role='tonal-button')
+        self._synthesis_run_btn.set_event_handler('click', self._run_synthesis_clicked)
         rb_hdr.add_component(self._research_toggle_btn)
         rb_hdr.add_component(self._research_briefing_hdr_lbl)
-        rb_hdr.add_component(self._research_run_btn)
-        rb_hdr.add_component(self._research_run_fb)
+        rb_hdr.add_component(self._synthesis_run_btn)
         self._home_panel.add_component(rb_hdr)
         self._research_briefing_body = ColumnPanel()
         self._research_briefing_body.visible = False
-        self._research_briefing_text = Label(text='', role='body', font_size=14)
+        self._research_briefing_text = Label(text='', role='body', font_size=14, allow_html=True)
         self._rb_copy_btn = Button(text='Copy', role='outlined-button')
         self._rb_copy_btn.set_event_handler('click', self._copy_briefing_clicked)
         rb_copy_row = FlowPanel(spacing_above='none', spacing_below='small')
@@ -3545,27 +3543,33 @@ class Form1(Form1Template):
                 self._research_briefing_hdr_lbl.text = f'Research Briefing — {ts} | {count} papers'
                 self._research_briefing_full = b.get('briefing') or ''
                 display = b.get('briefing_short') or self._research_briefing_full
-                self._research_briefing_text.text = display
+                safe = display.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                self._research_briefing_text.text = safe.replace('\n', '<br>')
         except Exception as e:
             self._research_briefing_hdr_lbl.text = f'Research Briefing — unavailable: {e}'
 
     def _run_synthesis_clicked(self, **event_args):
-        self._research_run_fb.text = 'Running synthesis…'
-        self._research_run_btn.enabled = False
+        self._synthesis_run_btn.text = 'Running...'
+        self._synthesis_run_btn.enabled = False
         try:
             result = anvil.server.call('run_research_synthesis')
             if result.get('status') == 'no_papers':
-                self._research_run_fb.text = '⚠️ No discovered papers found'
+                self._synthesis_run_btn.text = '⚠️ No papers'
             else:
-                count = result.get('paper_count', 0)
-                self._research_run_fb.text = f'✅ Done — {count} papers synthesized'
+                self._synthesis_run_btn.text = '✅ Done'
                 self._load_research_briefing()
                 self._research_briefing_body.visible = True
                 self._research_toggle_btn.text = '▼'
-        except Exception as e:
-            self._research_run_fb.text = f'❌ {e}'
-        finally:
-            self._research_run_btn.enabled = True
+        except Exception:
+            self._synthesis_run_btn.text = '❌ Failed'
+        tmr = Timer(interval=2)
+        _btn = self._synthesis_run_btn
+        def _reset(**kw):
+            tmr.interval = 0
+            _btn.text = 'Run Synthesis'
+            _btn.enabled = True
+        tmr.set_event_handler('tick', _reset)
+        self._home_panel.add_component(tmr)
 
     def _copy_briefing_clicked(self, **event_args):
         text = self._research_briefing_full or self._research_briefing_text.text or ''
