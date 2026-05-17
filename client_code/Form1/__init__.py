@@ -234,11 +234,13 @@ class Form1(Form1Template):
         _write_dir_btn = Button(text='Write directive', role='tonal-button')
         self._home_export_working_btn = Button(text='⬇ Export working bundle', role='tonal-button')
         self._home_export_audit_btn = Button(text='⬇ Export audit bundle', role='tonal-button')
+        self._home_export_desktop_btn = Button(text='⬇ Export for Desktop Claude', role='tonal-button')
         _write_note_btn.set_event_handler('click', lambda **kw: setattr(self._home_add_note_fb, 'text', '↓ below'))
         _write_dir_btn.set_event_handler('click', lambda **kw: setattr(self._directive_feedback, 'text', '↓ below'))
         self._home_export_working_btn.set_event_handler('click', self._home_export_working_clicked)
         self._home_export_audit_btn.set_event_handler('click', self._home_export_audit_clicked)
-        for b in [_write_note_btn, _write_dir_btn, self._home_export_working_btn, self._home_export_audit_btn]:
+        self._home_export_desktop_btn.set_event_handler('click', self._home_export_desktop_clicked)
+        for b in [_write_note_btn, _write_dir_btn, self._home_export_working_btn, self._home_export_audit_btn, self._home_export_desktop_btn]:
             actions.add_component(b)
         self._home_panel.add_component(actions)
         self._home_export_fb = Label(text='', role='body', font_size=14)
@@ -3492,6 +3494,9 @@ class Form1(Form1Template):
 
     def _home_export_audit_clicked(self, **event_args):
         self._run_export('get_audit_bundle', self._home_export_fb, self._home_export_fallback)
+
+    def _home_export_desktop_clicked(self, **event_args):
+        self._run_export('get_desktop_bundle', self._home_export_fb, self._home_export_fallback)
 
     def _update_home_status_strip(self):
         n_agents = self._home_active_agents
