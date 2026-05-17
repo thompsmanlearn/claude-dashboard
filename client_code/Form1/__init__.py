@@ -303,6 +303,34 @@ class Form1(Form1Template):
         # 3. Compact controls: lean trigger + auto toggle + directive
         self._build_controls(self._home_panel)
 
+        # Research Briefing (collapsible)
+        rb_hdr = FlowPanel(spacing_above='small', spacing_below='none')
+        self._research_toggle_btn = Button(text='▶', role='text-button')
+        self._research_briefing_hdr_lbl = Label(text='Research Briefing — loading…', bold=True, role='body', font_size=16)
+        self._research_run_btn = Button(text='Run Synthesis', role='tonal-button')
+        self._research_run_btn.set_event_handler('click', self._run_synthesis_clicked)
+        self._research_run_fb = Label(text='', role='body', font_size=14)
+        rb_hdr.add_component(self._research_toggle_btn)
+        rb_hdr.add_component(self._research_briefing_hdr_lbl)
+        rb_hdr.add_component(self._research_run_btn)
+        rb_hdr.add_component(self._research_run_fb)
+        self._home_panel.add_component(rb_hdr)
+        self._research_briefing_body = ColumnPanel()
+        self._research_briefing_body.visible = False
+        self._research_briefing_text = Label(text='', role='body', font_size=14)
+        _rb_copy_btn = Button(text='Copy', role='outlined-button')
+        _rb_copy_btn.set_event_handler('click', self._copy_briefing_clicked)
+        rb_copy_row = FlowPanel(spacing_above='none', spacing_below='small')
+        rb_copy_row.add_component(_rb_copy_btn)
+        self._research_briefing_body.add_component(rb_copy_row)
+        self._research_briefing_body.add_component(self._research_briefing_text)
+        self._home_panel.add_component(self._research_briefing_body)
+
+        def _toggle_rb(**kw):
+            self._research_briefing_body.visible = not self._research_briefing_body.visible
+            self._research_toggle_btn.text = '▼' if self._research_briefing_body.visible else '▶'
+        self._research_toggle_btn.set_event_handler('click', _toggle_rb)
+
         # 4. Note input
         note_row = FlowPanel(spacing_above='none', spacing_below='none')
         self._home_note_input = TextArea(placeholder="What's on your mind?", height=70, width=520)
@@ -1554,6 +1582,7 @@ class Form1(Form1Template):
         self._refresh_auto_status()
         self._load_home_notes()
         self._update_home_status_strip()
+        self._load_research_briefing()
 
     def _load_status(self):
         self._status_body.clear()
@@ -3500,6 +3529,46 @@ class Form1(Form1Template):
             self._close_session_btn.enabled = False
         except Exception as e:
             self._lean_feedback.text = f'❌ Error: {e}'
+
+    def _load_research_briefing(self):
+        try:
+            with anvil.server.no_loading_indicator:
+                b = anvil.server.call('get_latest_briefing')
+            if b is None:
+                self._research_briefing_hdr_lbl.text = 'Research Briefing — no briefings yet'
+                self._research_briefing_text.text = ''
+            else:
+                ts = (b.get('created_at') or '')[:16].replace('T', ' ')
+                count = b.get('paper_count') or 0
+                self._research_briefing_hdr_lbl.text = f'Research Briefing — {ts} | {count} papers'
+                self._research_briefing_text.text = b.get('briefing') or ''
+        except Exception as e:
+            self._research_briefing_hdr_lbl.text = f'Research Briefing — unavailable: {e}'
+
+    def _run_synthesis_clicked(self, **event_args):
+        self._research_run_fb.text = 'Running synthesis…'
+        self._research_run_btn.enabled = False
+        try:
+            result = anvil.server.call('run_research_synthesis')
+            if result.get('status') == 'no_papers':
+                self._research_run_fb.text = '⚠️ No discovered papers found'
+            else:
+                count = result.get('paper_count', 0)
+                self._research_run_fb.text = f'✅ Done — {count} papers synthesized'
+                self._load_research_briefing()
+                self._research_briefing_body.visible = True
+                self._research_toggle_btn.text = '▼'
+        except Exception as e:
+            self._research_run_fb.text = f'❌ {e}'
+        finally:
+            self._research_run_btn.enabled = True
+
+    def _copy_briefing_clicked(self, **event_args):
+        text = self._research_briefing_text.text or ''
+        try:
+            anvil.js.window.navigator.clipboard.writeText(text)
+        except Exception:
+            pass
 
     def _write_directive_clicked(self, **event_args):
         text = self._directive_input.text or ''
