@@ -251,10 +251,9 @@ class Form1(Form1Template):
         bill_submit_row.add_component(self._bill_input_fb)
         self._home_panel.add_component(bill_submit_row)
         self._bill_response_panel = ColumnPanel()
-        self._bill_response_panel.visible = False
         self._bill_response_lbl = Label(text='', role='body', font_size=14)
         bill_resp_row = FlowPanel(spacing_above='none', spacing_below='none')
-        bill_check_btn = Button(text='Check response', role='tonal-button')
+        bill_check_btn = Button(text='Get Output', role='tonal-button')
         bill_check_btn.set_event_handler('click', self._bill_check_response_clicked)
         self._bill_copy_btn = Button(text='Copy', role='outlined-button')
         self._bill_copy_btn.set_event_handler('click', self._bill_copy_response_clicked)
@@ -3552,9 +3551,7 @@ class Form1(Form1Template):
             self._bill_input_fb.text = f'❌ {e}'
             return
         self._bill_input_text.text = ''
-        self._bill_input_fb.text = ''
-        self._bill_response_lbl.text = '⏳ Awaiting Claude Code response…'
-        self._bill_response_panel.visible = True
+        self._bill_input_fb.text = '✅ Submitted. Press Get Output after session runs.'
 
     def _bill_check_response_clicked(self, **event_args):
         try:
@@ -3564,11 +3561,17 @@ class Form1(Form1Template):
             return
         status = result.get('status', 'none')
         if status == 'none':
-            self._bill_response_lbl.text = 'No input on file.'
+            self._bill_response_lbl.text = 'No output on file.'
         elif status == 'pending':
             self._bill_response_lbl.text = '⏳ Still processing…'
         else:
-            self._bill_response_lbl.text = result.get('response') or '(no response written)'
+            text = result.get('response') or '(no response written)'
+            self._bill_response_lbl.text = text
+            try:
+                anvil.js.window.navigator.clipboard.writeText(text)
+                self._bill_copy_btn.text = '✅ Copied'
+            except Exception:
+                self._bill_copy_btn.text = 'Copy'
 
     def _bill_copy_response_clicked(self, **event_args):
         text = self._bill_response_lbl.text or ''
