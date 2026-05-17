@@ -316,13 +316,13 @@ class Form1(Form1Template):
         self._home_panel.add_component(rb_hdr)
         self._research_briefing_body = ColumnPanel()
         self._research_briefing_body.visible = False
-        self._research_briefing_text = Label(text='', role='body', font_size=14, allow_html=True)
+        self._research_bullets_panel = ColumnPanel()
         self._rb_copy_btn = Button(text='Copy', role='outlined-button')
         self._rb_copy_btn.set_event_handler('click', self._copy_briefing_clicked)
         rb_copy_row = FlowPanel(spacing_above='none', spacing_below='small')
         rb_copy_row.add_component(self._rb_copy_btn)
         self._research_briefing_body.add_component(rb_copy_row)
-        self._research_briefing_body.add_component(self._research_briefing_text)
+        self._research_briefing_body.add_component(self._research_bullets_panel)
         self._home_panel.add_component(self._research_briefing_body)
 
         def _toggle_rb(**kw):
@@ -3535,7 +3535,7 @@ class Form1(Form1Template):
                 b = anvil.server.call('get_latest_briefing')
             if b is None:
                 self._research_briefing_hdr_lbl.text = 'Research Briefing — no briefings yet'
-                self._research_briefing_text.text = ''
+                self._research_bullets_panel.clear()
                 self._research_briefing_full = ''
             else:
                 ts = (b.get('created_at') or '')[:16].replace('T', ' ')
@@ -3543,8 +3543,13 @@ class Form1(Form1Template):
                 self._research_briefing_hdr_lbl.text = f'Research Briefing — {ts} | {count} papers'
                 self._research_briefing_full = b.get('briefing') or ''
                 display = b.get('briefing_short') or self._research_briefing_full
-                safe = display.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                self._research_briefing_text.text = safe.replace('\n', '<br>')
+                self._research_bullets_panel.clear()
+                for line in display.split('\n'):
+                    line = line.strip()
+                    if line:
+                        self._research_bullets_panel.add_component(
+                            Label(text=line, role='body', font_size=14)
+                        )
         except Exception as e:
             self._research_briefing_hdr_lbl.text = f'Research Briefing — unavailable: {e}'
 
@@ -3572,7 +3577,7 @@ class Form1(Form1Template):
         self._home_panel.add_component(tmr)
 
     def _copy_briefing_clicked(self, **event_args):
-        text = self._research_briefing_full or self._research_briefing_text.text or ''
+        text = self._research_briefing_full or ''
         try:
             anvil.js.window.navigator.clipboard.writeText(text)
             self._rb_copy_btn.text = '✅ Copied'
