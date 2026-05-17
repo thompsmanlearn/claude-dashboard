@@ -3543,10 +3543,11 @@ class Form1(Form1Template):
                 self._research_briefing_hdr_lbl.text = f'Research Briefing — {ts} | {count} papers'
                 self._research_briefing_full = b.get('briefing') or ''
                 display = b.get('briefing_short') or self._research_briefing_full
+                _markers = {'EXECUTIVE_BRIEFING', 'END_EXECUTIVE_BRIEFING'}
                 self._research_bullets_panel.clear()
                 for line in display.split('\n'):
                     line = line.strip()
-                    if line:
+                    if line and line not in _markers:
                         self._research_bullets_panel.add_component(
                             Label(text=line, role='body', font_size=14)
                         )
