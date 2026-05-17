@@ -318,10 +318,10 @@ class Form1(Form1Template):
         self._research_briefing_body = ColumnPanel()
         self._research_briefing_body.visible = False
         self._research_briefing_text = Label(text='', role='body', font_size=14)
-        _rb_copy_btn = Button(text='Copy', role='outlined-button')
-        _rb_copy_btn.set_event_handler('click', self._copy_briefing_clicked)
+        self._rb_copy_btn = Button(text='Copy', role='outlined-button')
+        self._rb_copy_btn.set_event_handler('click', self._copy_briefing_clicked)
         rb_copy_row = FlowPanel(spacing_above='none', spacing_below='small')
-        rb_copy_row.add_component(_rb_copy_btn)
+        rb_copy_row.add_component(self._rb_copy_btn)
         self._research_briefing_body.add_component(rb_copy_row)
         self._research_briefing_body.add_component(self._research_briefing_text)
         self._home_panel.add_component(self._research_briefing_body)
@@ -3567,6 +3567,13 @@ class Form1(Form1Template):
         text = self._research_briefing_text.text or ''
         try:
             anvil.js.window.navigator.clipboard.writeText(text)
+            self._rb_copy_btn.text = '✅ Copied'
+            tmr = Timer(interval=2)
+            def _reset(**kw):
+                tmr.interval = 0
+                self._rb_copy_btn.text = 'Copy'
+            tmr.set_event_handler('tick', _reset)
+            self._research_briefing_body.add_component(tmr)
         except Exception:
             pass
 
