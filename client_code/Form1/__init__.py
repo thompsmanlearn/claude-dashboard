@@ -91,6 +91,7 @@ class Form1(Form1Template):
         self._home_active_agents = 0
         self._home_queue_pending = 0
         self._home_inbox_count = 0
+        self._lean_poll_timer = None
         self._build_layout()
         self.refresh_data()
 
@@ -3448,11 +3449,43 @@ class Form1(Form1Template):
     def _trigger_lean_clicked(self, **event_args):
         self._lean_feedback.text = 'Starting...'
         self._lean_trigger_btn.enabled = False
+        if self._lean_poll_timer is not None:
+            self._lean_poll_timer.interval = 0
+            self._lean_poll_timer = None
         try:
             result = anvil.server.call('trigger_lean_session')
             self._lean_feedback.text = result.get('message', str(result))
         except Exception as e:
             self._lean_feedback.text = f'\u274c Error: {e}'
+            self._refresh_lean_status()
+            return
+        _tick = [0]
+        _terminal = {'complete', 'error', 'timeout'}
+        tmr = Timer(interval=10)
+        self._lean_poll_timer = tmr
+
+        def _on_lean_tick(**kw):
+            _tick[0] += 1
+            try:
+                with anvil.server.no_loading_indicator:
+                    status = anvil.server.call('get_session_status')
+                if status is None:
+                    if _tick[0] >= 3:
+                        tmr.interval = 0
+                        self._lean_feedback.text = 'Idle'
+                        self._refresh_lean_status()
+                    return
+                phase = status.get('phase') or 'unknown'
+                action = status.get('current_action') or ''
+                self._lean_feedback.text = f'{phase.upper()}{" \u2014 " + action if action else ""}'
+                if phase in _terminal:
+                    tmr.interval = 0
+                    self._refresh_lean_status()
+            except Exception:
+                pass
+
+        tmr.set_event_handler('tick', _on_lean_tick)
+        self._home_panel.add_component(tmr)
         self._refresh_lean_status()
 
     def _write_directive_clicked(self, **event_args):
