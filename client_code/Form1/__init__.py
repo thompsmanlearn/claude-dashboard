@@ -92,6 +92,7 @@ class Form1(Form1Template):
         self._home_queue_pending = 0
         self._home_inbox_count = 0
         self._lean_poll_timer = None
+        self._research_briefing_full = ''
         self._build_layout()
         self.refresh_data()
 
@@ -3537,11 +3538,14 @@ class Form1(Form1Template):
             if b is None:
                 self._research_briefing_hdr_lbl.text = 'Research Briefing — no briefings yet'
                 self._research_briefing_text.text = ''
+                self._research_briefing_full = ''
             else:
                 ts = (b.get('created_at') or '')[:16].replace('T', ' ')
                 count = b.get('paper_count') or 0
                 self._research_briefing_hdr_lbl.text = f'Research Briefing — {ts} | {count} papers'
-                self._research_briefing_text.text = b.get('briefing') or ''
+                self._research_briefing_full = b.get('briefing') or ''
+                display = b.get('briefing_short') or self._research_briefing_full
+                self._research_briefing_text.text = display
         except Exception as e:
             self._research_briefing_hdr_lbl.text = f'Research Briefing — unavailable: {e}'
 
@@ -3564,7 +3568,7 @@ class Form1(Form1Template):
             self._research_run_btn.enabled = True
 
     def _copy_briefing_clicked(self, **event_args):
-        text = self._research_briefing_text.text or ''
+        text = self._research_briefing_full or self._research_briefing_text.text or ''
         try:
             anvil.js.window.navigator.clipboard.writeText(text)
             self._rb_copy_btn.text = '✅ Copied'
