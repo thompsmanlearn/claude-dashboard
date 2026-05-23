@@ -345,13 +345,21 @@ class Form1(Form1Template):
         self._wp_search_btn.set_event_handler('click', self._wp_search)
         self._wp_read_btn = Button(text='Read URL', role='filled-button')
         self._wp_read_btn.set_event_handler('click', self._wp_read_url)
-        self._wp_copy_btn = Button(text='Copy', role='tonal-button')
+        self._wp_copy_btn = Button(text='Copy All', role='tonal-button')
         self._wp_copy_btn.set_event_handler('click', self._wp_copy)
+        self._wp_copy_gemini_btn = Button(text='Copy Gemini', role='outlined-button')
+        self._wp_copy_gemini_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='gemini'))
+        self._wp_copy_tavily_btn = Button(text='Copy Tavily', role='outlined-button')
+        self._wp_copy_tavily_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='tavily'))
+        self._wp_copy_brave_btn = Button(text='Copy Brave', role='outlined-button')
+        self._wp_copy_brave_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='brave'))
         self._wp_clear_btn = Button(text='Clear', role='outlined-button')
         self._wp_clear_btn.set_event_handler('click', self._wp_clear)
         self._wp_promote_btn = Button(text='Promote to thread', role='tonal-button')
         self._wp_promote_btn.set_event_handler('click', self._wp_show_promote_form)
-        for btn in [self._wp_search_btn, self._wp_read_btn, self._wp_copy_btn, self._wp_clear_btn, self._wp_promote_btn]:
+        for btn in [self._wp_search_btn, self._wp_read_btn, self._wp_copy_btn,
+                    self._wp_copy_gemini_btn, self._wp_copy_tavily_btn, self._wp_copy_brave_btn,
+                    self._wp_clear_btn, self._wp_promote_btn]:
             actions_row.add_component(btn)
         self._workpad_panel.add_component(actions_row)
 
@@ -2687,36 +2695,87 @@ class Form1(Form1Template):
                 e_btn.text = 'Show less' if f_lbl.visible else 'Show more'
             return _toggle
 
+        def _render_result_list(parent, results, source_label):
+            """Render a list of {url,title,snippet,source_domain} results under a source header."""
+            if not results:
+                parent.add_component(Label(text=f'{source_label}: no results.', role='body', font_size=13))
+                return
+            parent.add_component(Label(text=source_label, role='body', font_size=13, bold=True))
+            for res in results:
+                title = res.get('title', '') or res.get('url', '')
+                url = res.get('url', '')
+                domain = res.get('source_domain', '')
+                snippet = res.get('snippet', '')
+                pub = res.get('published_date', '')
+                score = res.get('score')
+                row = ColumnPanel()
+                title_btn = Button(text=title or url, role='tonal-button', font_size=14)
+                title_btn.set_event_handler('click', _make_url_setter(url))
+                row.add_component(title_btn)
+                meta_parts = []
+                if domain:
+                    meta_parts.append(domain)
+                if pub:
+                    meta_parts.append(pub)
+                if score is not None:
+                    meta_parts.append(f'score {score}')
+                if meta_parts:
+                    row.add_component(Label(text=' · '.join(meta_parts), role='body', font_size=12))
+                if snippet:
+                    snip = snippet[:200] + ('…' if len(snippet) > 200 else '')
+                    row.add_component(Label(text=snip, role='body', font_size=14))
+                parent.add_component(row)
+
         for entry in reversed(entries):
             action = entry.get('action', '')
             ts = entry.get('timestamp', '')
             card = ColumnPanel()
-            if action == 'search':
+            if action == 'search_all':
+                query_text = entry.get('query', '')
+                errors = entry.get('errors', {})
+                card.add_component(Label(
+                    text=f'🔍 {_rel_time(ts)} — {query_text[:80]}',
+                    role='body', font_size=13, bold=True,
+                ))
+                if errors:
+                    card.add_component(Label(
+                        text='⚠️ Errors: ' + ', '.join(f'{k}: {v[:60]}' for k, v in errors.items()),
+                        role='body', font_size=12,
+                    ))
+                # Gemini synthesis section
+                gemini = entry.get('gemini', {})
+                g_answer = gemini.get('answer', '')
+                card.add_component(Label(text='🤖 Gemini synthesis', role='body', font_size=13, bold=True))
+                if g_answer:
+                    trunc = g_answer[:800] + ('…' if len(g_answer) > 800 else '')
+                    g_lbl = Label(text=trunc, role='body', font_size=14)
+                    card.add_component(g_lbl)
+                    if len(g_answer) > 800:
+                        g_full = Label(text=g_answer, role='body', font_size=14, visible=False)
+                        g_btn = Button(text='Show more', role='tonal-button', font_size=12)
+                        card.add_component(g_full)
+                        g_btn.set_event_handler('click', _make_expand(g_btn, g_full))
+                        card.add_component(g_btn)
+                else:
+                    card.add_component(Label(text='Gemini: no synthesis available.', role='body', font_size=13))
+                # Tavily section
+                tavily = entry.get('tavily', {})
+                t_answer = tavily.get('answer', '')
+                if t_answer:
+                    card.add_component(Label(text='🟢 Tavily answer', role='body', font_size=13, bold=True))
+                    card.add_component(Label(text=t_answer[:400] + ('…' if len(t_answer) > 400 else ''),
+                                             role='body', font_size=14))
+                _render_result_list(card, tavily.get('results', []), '🟢 Tavily results')
+                # Brave section
+                _render_result_list(card, entry.get('brave', []), '🔵 Brave results')
+            elif action == 'search':
                 query_text = entry.get('query', '')
                 results = entry.get('results', [])
                 card.add_component(Label(
                     text=f'🔍 {_rel_time(ts)} — {query_text[:80]}',
                     role='body', font_size=13, bold=True,
                 ))
-                if not results:
-                    card.add_component(Label(text='No results.', role='body', font_size=14))
-                for res in results:
-                    title = res.get('title', '') or res.get('url', '')
-                    url = res.get('url', '')
-                    domain = res.get('source_domain', '')
-                    snippet = res.get('snippet', '')
-                    pub = res.get('published_date', '')
-                    row = ColumnPanel()
-                    title_btn = Button(text=title or url, role='tonal-button', font_size=14)
-                    title_btn.set_event_handler('click', _make_url_setter(url))
-                    row.add_component(title_btn)
-                    meta = domain + (' · ' + pub if pub else '')
-                    if meta:
-                        row.add_component(Label(text=meta, role='body', font_size=12))
-                    if snippet:
-                        snip = snippet[:200] + ('…' if len(snippet) > 200 else '')
-                        row.add_component(Label(text=snip, role='body', font_size=14))
-                    card.add_component(row)
+                _render_result_list(card, results, '🔵 Brave')
             else:
                 result = entry.get('result', '')
                 card.add_component(Label(
@@ -2740,10 +2799,10 @@ class Form1(Form1Template):
         if not query:
             self._wp_fb.text = '❌ Nothing to search.'
             return
-        self._wp_fb.text = 'Searching…'
+        self._wp_fb.text = 'Searching Brave, Tavily, Gemini…'
         self._wp_search_btn.enabled = False
         try:
-            anvil.server.call('search_brave', query, 5)
+            anvil.server.call('search_all', query, 5)
             state = anvil.server.call('get_workpad_state')
             self._wp_render_output(state.get('output_entries', []))
             self._wp_fb.text = '✅ Search complete.'
@@ -2770,34 +2829,71 @@ class Form1(Form1Template):
         finally:
             self._wp_read_btn.enabled = True
 
-    def _wp_copy(self, **event_args):
+    def _wp_copy(self, source=None, **event_args):
+        """Copy workpad content. source=None copies all; source='gemini'/'tavily'/'brave' filters."""
         self._wp_do_save()
         parts = []
         input_text = (self._wp_input.text or '').strip()
-        if input_text:
+        if input_text and source is None:
             parts.append(input_text)
+
+        def _fmt_results(results):
+            lines = []
+            for res in results:
+                title = res.get('title', '') or res.get('url', '')
+                url = res.get('url', '')
+                snippet = res.get('snippet', '')
+                line = f'• {title}'
+                if url and url != title:
+                    line += f'\n  {url}'
+                if snippet:
+                    line += f'\n  {snippet}'
+                lines.append(line)
+            return '\n'.join(lines)
+
         for entry in reversed(getattr(self, '_wp_entries', [])):
             action = entry.get('action', '')
-            if action == 'search':
+            if action == 'search_all':
+                query = entry.get('query', '')
+                block_parts = []
+                if source is None:
+                    block_parts.append(f'🔍 Search: {query}')
+                if source in (None, 'gemini'):
+                    gemini = entry.get('gemini', {})
+                    g_answer = (gemini.get('answer', '') or '').strip()
+                    if g_answer:
+                        block_parts.append(f'🤖 Gemini synthesis\n{g_answer}')
+                if source in (None, 'tavily'):
+                    tavily = entry.get('tavily', {})
+                    t_answer = (tavily.get('answer', '') or '').strip()
+                    t_results = tavily.get('results', [])
+                    t_block = []
+                    if t_answer:
+                        t_block.append(f'🟢 Tavily answer\n{t_answer}')
+                    if t_results:
+                        t_block.append(f'🟢 Tavily results\n{_fmt_results(t_results)}')
+                    if t_block:
+                        block_parts.extend(t_block)
+                if source in (None, 'brave'):
+                    brave = entry.get('brave', [])
+                    if brave:
+                        block_parts.append(f'🔵 Brave results\n{_fmt_results(brave)}')
+                if source is not None and not block_parts:
+                    continue
+                if source is not None:
+                    block_parts.insert(0, f'🔍 Search: {query}')
+                parts.append('\n\n'.join(block_parts))
+            elif action == 'search' and source in (None, 'brave'):
                 query = entry.get('query', '')
                 results = entry.get('results', [])
-                block = [f'🔍 Search: {query}']
-                for res in results:
-                    title = res.get('title', '') or res.get('url', '')
-                    url = res.get('url', '')
-                    snippet = res.get('snippet', '')
-                    line = f'• {title}'
-                    if url and url != title:
-                        line += f'\n  {url}'
-                    if snippet:
-                        line += f'\n  {snippet}'
-                    block.append(line)
-                parts.append('\n'.join(block))
-            else:
+                parts.append(f'🔍 Search: {query}\n🔵 Brave\n{_fmt_results(results)}')
+            elif action not in ('search', 'search_all') and source is None:
                 result = (entry.get('result', '') or '').strip()
                 url = entry.get('url', '') or action
                 if result:
                     parts.append(f'📄 {url}\n{result}')
+
+        label = {'gemini': 'Gemini', 'tavily': 'Tavily', 'brave': 'Brave'}.get(source, 'All')
         text = '\n\n---\n\n'.join(parts) if parts else ''
         self._wp_copy_fallback.visible = False
         copied = False
@@ -2807,9 +2903,9 @@ class Form1(Form1Template):
         except Exception:
             pass
         if copied:
-            self._wp_fb.text = '✅ Copied to clipboard.'
+            self._wp_fb.text = f'✅ {label} copied to clipboard.'
         else:
-            self._wp_fb.text = '📋 Clipboard unavailable — text below:'
+            self._wp_fb.text = f'📋 Clipboard unavailable — {label} text below:'
             self._wp_copy_fallback.clear()
             self._wp_copy_fallback.add_component(TextArea(text=text, height=120, enabled=True))
             self._wp_copy_fallback.visible = True
