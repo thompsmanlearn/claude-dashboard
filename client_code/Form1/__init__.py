@@ -2830,68 +2830,109 @@ class Form1(Form1Template):
             self._wp_read_btn.enabled = True
 
     def _wp_copy(self, source=None, **event_args):
-        """Copy workpad content. source=None copies all; source='gemini'/'tavily'/'brave' filters."""
+        """Copy workpad content formatted for Desktop Claude AI analysis.
+        source=None copies all; source='gemini'/'tavily'/'brave' filters to that engine only.
+        """
         self._wp_do_save()
         parts = []
         input_text = (self._wp_input.text or '').strip()
         if input_text and source is None:
             parts.append(input_text)
 
-        def _fmt_results(results):
-            lines = []
-            for res in results:
-                title = res.get('title', '') or res.get('url', '')
-                url = res.get('url', '')
-                snippet = res.get('snippet', '')
-                line = f'• {title}'
-                if url and url != title:
-                    line += f'\n  {url}'
-                if snippet:
-                    line += f'\n  {snippet}'
-                lines.append(line)
-            return '\n'.join(lines)
+        # Track seen URLs across entries for deduplication
+        seen_urls = set()
+
+        def _age_flag(pub_date):
+            """Return [DATED] if pub_date suggests > 12 months old."""
+            if not pub_date:
+                return ''
+            try:
+                import re as _re
+                year = int(_re.search(r'(20\d\d)', pub_date).group(1))
+                import datetime as _dt
+                if _dt.date.today().year - year >= 1 and pub_date < str(_dt.date.today().year):
+                    return ' [DATED]'
+            except Exception:
+                pass
+            return ''
+
+        def _fmt_source_line(res, already_seen):
+            title = (res.get('title', '') or res.get('url', '')).strip()
+            url = (res.get('url', '') or '').strip()
+            snippet = (res.get('snippet', '') or '').strip()
+            pub = res.get('published_date', '')
+            flag = _age_flag(pub)
+            if url in already_seen:
+                return f'• {title} {url} [see above]{flag}'
+            already_seen.add(url)
+            sentence = (snippet[:120] + '…' if len(snippet) > 120 else snippet)
+            return f'• {title} | {url}{flag} — {sentence}'
+
+        def _word_count(text):
+            return len(text.split())
 
         for entry in reversed(getattr(self, '_wp_entries', [])):
             action = entry.get('action', '')
+            query = entry.get('query', '')
+
             if action == 'search_all':
-                query = entry.get('query', '')
-                block_parts = []
-                if source is None:
-                    block_parts.append(f'🔍 Search: {query}')
+                entry_seen = set(seen_urls)  # per-entry dedup; updates seen_urls at end
+                block_lines = [f'QUERY: {query}']
+                word_budget = 800
+
                 if source in (None, 'gemini'):
-                    gemini = entry.get('gemini', {})
-                    g_answer = (gemini.get('answer', '') or '').strip()
+                    g_answer = (entry.get('gemini', {}).get('answer', '') or '').strip()
                     if g_answer:
-                        block_parts.append(f'🤖 Gemini synthesis\n{g_answer}')
+                        # Strip markdown: remove **, *, ##, etc.
+                        import re as _re2
+                        plain = _re2.sub(r'\*+|#+\s?|`+', '', g_answer).strip()
+                        # Trim to fit budget
+                        words = plain.split()
+                        plain = ' '.join(words[:180]) + ('…' if len(words) > 180 else '')
+                        block_lines.append(f'GEMINI SYNTHESIS: {plain}')
+
                 if source in (None, 'tavily'):
                     tavily = entry.get('tavily', {})
                     t_answer = (tavily.get('answer', '') or '').strip()
                     t_results = tavily.get('results', [])
-                    t_block = []
                     if t_answer:
-                        t_block.append(f'🟢 Tavily answer\n{t_answer}')
+                        words = t_answer.split()
+                        short = ' '.join(words[:60]) + ('…' if len(words) > 60 else '')
+                        block_lines.append(f'TAVILY SUMMARY: {short}')
                     if t_results:
-                        t_block.append(f'🟢 Tavily results\n{_fmt_results(t_results)}')
-                    if t_block:
-                        block_parts.extend(t_block)
+                        src_lines = [_fmt_source_line(r, entry_seen) for r in t_results]
+                        block_lines.append('TAVILY SOURCES:\n' + '\n'.join(src_lines))
+
                 if source in (None, 'brave'):
                     brave = entry.get('brave', [])
                     if brave:
-                        block_parts.append(f'🔵 Brave results\n{_fmt_results(brave)}')
-                if source is not None and not block_parts:
-                    continue
-                if source is not None:
-                    block_parts.insert(0, f'🔍 Search: {query}')
-                parts.append('\n\n'.join(block_parts))
+                        src_lines = [_fmt_source_line(r, entry_seen) for r in brave]
+                        block_lines.append('BRAVE SOURCES:\n' + '\n'.join(src_lines))
+
+                seen_urls.update(entry_seen)
+                block = '\n\n'.join(block_lines)
+                # Hard trim to ~800 words
+                words = block.split()
+                if len(words) > word_budget:
+                    block = ' '.join(words[:word_budget]) + '\n[truncated to 800 words]'
+                parts.append(block)
+
             elif action == 'search' and source in (None, 'brave'):
-                query = entry.get('query', '')
+                # Legacy single-engine entry
                 results = entry.get('results', [])
-                parts.append(f'🔍 Search: {query}\n🔵 Brave\n{_fmt_results(results)}')
+                lines = [f'QUERY: {query}', 'BRAVE SOURCES:']
+                for r in results:
+                    lines.append(_fmt_source_line(r, seen_urls))
+                parts.append('\n'.join(lines))
+
             elif action not in ('search', 'search_all') and source is None:
+                # URL fetch — already stripped by uplink; trim to 150 words
                 result = (entry.get('result', '') or '').strip()
                 url = entry.get('url', '') or action
                 if result:
-                    parts.append(f'📄 {url}\n{result}')
+                    words = result.split()
+                    trimmed = ' '.join(words[:150]) + ('…' if len(words) > 150 else '')
+                    parts.append(f'URL FETCHES:\n{url}\n{trimmed}')
 
         label = {'gemini': 'Gemini', 'tavily': 'Tavily', 'brave': 'Brave'}.get(source, 'All')
         text = '\n\n---\n\n'.join(parts) if parts else ''
