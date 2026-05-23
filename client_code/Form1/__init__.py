@@ -2670,6 +2670,7 @@ class Form1(Form1Template):
             self._wp_fb.text = f'❌ Load failed: {e}'
 
     def _wp_render_output(self, entries):
+        self._wp_entries = entries  # cache for _wp_copy
         self._wp_output_panel.clear()
         if not entries:
             self._wp_output_panel.add_component(Label(text='No output yet.', role='body', font_size=14))
@@ -2771,7 +2772,33 @@ class Form1(Form1Template):
 
     def _wp_copy(self, **event_args):
         self._wp_do_save()
-        text = self._wp_input.text or ''
+        parts = []
+        input_text = (self._wp_input.text or '').strip()
+        if input_text:
+            parts.append(input_text)
+        for entry in reversed(getattr(self, '_wp_entries', [])):
+            action = entry.get('action', '')
+            if action == 'search':
+                query = entry.get('query', '')
+                results = entry.get('results', [])
+                block = [f'🔍 Search: {query}']
+                for res in results:
+                    title = res.get('title', '') or res.get('url', '')
+                    url = res.get('url', '')
+                    snippet = res.get('snippet', '')
+                    line = f'• {title}'
+                    if url and url != title:
+                        line += f'\n  {url}'
+                    if snippet:
+                        line += f'\n  {snippet}'
+                    block.append(line)
+                parts.append('\n'.join(block))
+            else:
+                result = (entry.get('result', '') or '').strip()
+                url = entry.get('url', '') or action
+                if result:
+                    parts.append(f'📄 {url}\n{result}')
+        text = '\n\n---\n\n'.join(parts) if parts else ''
         self._wp_copy_fallback.visible = False
         copied = False
         try:
