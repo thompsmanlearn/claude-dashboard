@@ -1900,6 +1900,10 @@ class Form1(Form1Template):
         self._sessions_export_btn.set_event_handler('click', self._sessions_export_clicked)
         hdr.add_component(self._sessions_export_btn)
         self._sessions_panel.add_component(hdr)
+        self._sessions_panel.add_component(
+            Label(text='Export copies recent session artifacts to clipboard for Desktop Claude.',
+                  role='body', font_size=13)
+        )
         self._sessions_export_fb = Label(text='', role='body', font_size=14)
         self._sessions_panel.add_component(self._sessions_export_fb)
         self._sessions_export_panel = ColumnPanel()
@@ -1928,12 +1932,6 @@ class Form1(Form1Template):
         self._site_status_card = ColumnPanel(role='outlined-card')
         self._sessions_panel.add_component(self._site_status_card)
 
-        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=18))
-        self._sessions_panel.add_component(
-            Label(text='Recent Session Artifacts', bold=True, role='body', font_size=18)
-        )
-        self._sessions_artifacts_body = ColumnPanel()
-        self._sessions_panel.add_component(self._sessions_artifacts_body)
 
     def _load_sessions(self):
         # Boot briefings
@@ -2015,25 +2013,6 @@ class Form1(Form1Template):
                 Label(text=f'Site status unavailable: {e}', role='body', font_size=14)
             )
 
-        # Artifact history
-        self._sessions_artifacts_body.clear()
-        try:
-            with anvil.server.no_loading_indicator:
-                artifacts = anvil.server.call('get_session_artifacts', 15)
-            if not artifacts:
-                self._sessions_artifacts_body.add_component(
-                    Label(text='No session artifacts found.', role='body', font_size=18)
-                )
-                return
-            for artifact in artifacts:
-                self._sessions_artifacts_body.add_component(
-                    self._build_artifact_card(artifact)
-                )
-        except Exception as e:
-            self._sessions_artifacts_body.add_component(
-                Label(text=f'Error loading artifacts: {e}', role='body', font_size=18)
-            )
-
     def _build_briefing_card(self, briefing):
         briefing_id = briefing.get('id')
         created = (briefing.get('created_at') or '')[:16].replace('T', ' ')
@@ -2078,36 +2057,6 @@ class Form1(Form1Template):
             def _e(**kw):
                 det.visible = not det.visible
                 btn.text = '−' if det.visible else '+'
-            return _e
-
-        expand_btn.set_event_handler('click', _make_expand(detail, expand_btn))
-        return card
-
-    def _build_artifact_card(self, artifact):
-        title = artifact.get('title') or artifact.get('filename', '(unknown)')
-        date = artifact.get('date') or ''
-        content = artifact.get('content') or ''
-
-        card = ColumnPanel(role='outlined-card')
-
-        hdr = FlowPanel(spacing_above='none', spacing_below='none')
-        hdr.add_component(Label(text=title[:80], bold=True, role='body', font_size=18))
-        expand_btn = Button(text='+', role='text-button')
-        hdr.add_component(expand_btn)
-        card.add_component(hdr)
-
-        if date:
-            card.add_component(Label(text=date, role='body', font_size=14))
-
-        detail = ColumnPanel()
-        detail.visible = False
-        detail.add_component(Label(text=content, role='body', font_size=14))
-        card.add_component(detail)
-
-        def _make_expand(det, btn):
-            def _e(**kw):
-                det.visible = not det.visible
-                btn.text = '\u2212' if det.visible else '+'
             return _e
 
         expand_btn.set_event_handler('click', _make_expand(detail, expand_btn))
