@@ -322,6 +322,8 @@ class Form1(Form1Template):
 
     def _build_workpad_layout(self):
         self._wp_dirty = [False]
+        self._wp_session_start_idx = 0   # entries before this index are "history"
+        self._wp_show_history = False    # whether history panel is expanded
 
         # Input region
         self._workpad_panel.add_component(Label(text='Input', role='title', font_size=20))
@@ -389,10 +391,23 @@ class Form1(Form1Template):
         self._wp_promote_form.add_component(self._wp_promote_fb)
         self._workpad_panel.add_component(self._wp_promote_form)
 
-        # Output region
+        # Output region — current session only
         self._workpad_panel.add_component(Label(text='Output', role='title', font_size=20))
         self._wp_output_panel = ColumnPanel()
         self._workpad_panel.add_component(self._wp_output_panel)
+
+        # History toggle — shown only when prior entries exist
+        self._wp_history_toggle_row = FlowPanel(spacing_above='small', spacing_below='none')
+        self._wp_history_btn = Button(text='Show history', role='text-button', font_size=13)
+        self._wp_history_btn.set_event_handler('click', self._wp_toggle_history)
+        self._wp_history_toggle_row.add_component(self._wp_history_btn)
+        self._wp_history_toggle_row.visible = False
+        self._workpad_panel.add_component(self._wp_history_toggle_row)
+
+        # History panel — hidden by default
+        self._wp_history_panel = ColumnPanel()
+        self._wp_history_panel.visible = False
+        self._workpad_panel.add_component(self._wp_history_panel)
 
         # Auto-save: fires every 2s, saves only when dirty
         self._wp_save_timer = Timer(interval=2)
@@ -2673,16 +2688,52 @@ class Form1(Form1Template):
             self._wp_input.text = state.get('input_text', '')
             self._wp_url.text = state.get('attach_url', '')
             self._wp_search_btn.enabled = bool((self._wp_input.text or '').strip())
-            self._wp_render_output(state.get('output_entries', []))
+            entries = state.get('output_entries', [])
+            # Everything already in Supabase at load time is "history" for this session
+            self._wp_session_start_idx = len(entries)
+            self._wp_render_output(entries)
         except Exception as e:
             self._wp_fb.text = f'❌ Load failed: {e}'
 
     def _wp_render_output(self, entries):
-        self._wp_entries = entries  # cache for _wp_copy
+        self._wp_entries = entries  # full list — _wp_copy uses session slice
+
+        session_start = getattr(self, '_wp_session_start_idx', 0)
+        history_entries = entries[:session_start]
+        current_entries = entries[session_start:]
+
+        # ── Current session output panel ─────────────────────────────────────
         self._wp_output_panel.clear()
-        if not entries:
-            self._wp_output_panel.add_component(Label(text='No output yet.', role='body', font_size=14))
-            return
+        if not current_entries:
+            self._wp_output_panel.add_component(
+                Label(text='No results this session.', role='body', font_size=14)
+            )
+        # entries to render in main panel = current session only (reversed = newest first)
+        render_entries = current_entries
+
+        # ── History toggle button ─────────────────────────────────────────────
+        if history_entries:
+            n = len(history_entries)
+            if getattr(self, '_wp_show_history', False):
+                self._wp_history_btn.text = f'Hide history ({n})'
+            else:
+                self._wp_history_btn.text = f'Show history ({n} older results)'
+            self._wp_history_toggle_row.visible = True
+        else:
+            self._wp_history_toggle_row.visible = False
+
+        # ── History panel (visible only when toggled) ─────────────────────────
+        self._wp_history_panel.clear()
+        if getattr(self, '_wp_show_history', False) and history_entries:
+            self._wp_history_panel.add_component(
+                Label(text='— Earlier results —', role='body', font_size=12, italic=True)
+            )
+            render_history = history_entries  # will be rendered below after setup
+
+        if not current_entries and not getattr(self, '_wp_show_history', False):
+            return  # nothing to render in either panel
+
+        # ── Shared rendering helper (renders entry list into a target panel) ──
 
         def _make_url_setter(u):
             def _set(**kw):
@@ -2726,7 +2777,8 @@ class Form1(Form1Template):
                     row.add_component(Label(text=snip, role='body', font_size=14))
                 parent.add_component(row)
 
-        for entry in reversed(entries):
+        def _render_entries(target_panel, entry_list):
+          for entry in reversed(entry_list):
             action = entry.get('action', '')
             ts = entry.get('timestamp', '')
             card = ColumnPanel()
@@ -2795,7 +2847,22 @@ class Form1(Form1Template):
                     card.add_component(full_lbl)
                     expand_btn.set_event_handler('click', _make_expand(expand_btn, full_lbl))
                     card.add_component(expand_btn)
-            self._wp_output_panel.add_component(card)
+            target_panel.add_component(card)
+
+        # Render current session entries into main output panel
+        if current_entries:
+            _render_entries(self._wp_output_panel, current_entries)
+
+        # Render history entries into history panel (if toggled open)
+        if getattr(self, '_wp_show_history', False) and history_entries:
+            _render_entries(self._wp_history_panel, history_entries)
+            self._wp_history_panel.visible = True
+        else:
+            self._wp_history_panel.visible = False
+
+    def _wp_toggle_history(self, **event_args):
+        self._wp_show_history = not getattr(self, '_wp_show_history', False)
+        self._wp_render_output(getattr(self, '_wp_entries', []))
 
     def _wp_search(self, **event_args):
         self._wp_do_save()
@@ -2875,7 +2942,12 @@ class Form1(Form1Template):
         def _word_count(text):
             return len(text.split())
 
-        for entry in reversed(getattr(self, '_wp_entries', [])):
+        # Copy only current session entries (history excluded unless explicitly shown)
+        all_entries = getattr(self, '_wp_entries', [])
+        session_start = getattr(self, '_wp_session_start_idx', 0)
+        copy_entries = all_entries[session_start:]  # current session only
+
+        for entry in reversed(copy_entries):
             action = entry.get('action', '')
             query = entry.get('query', '')
 
@@ -2965,6 +3037,8 @@ class Form1(Form1Template):
             self._wp_url.text = ''
             self._wp_dirty[0] = False
             self._wp_copy_fallback.visible = False
+            self._wp_session_start_idx = 0   # nothing left is "history"
+            self._wp_show_history = False
             self._wp_render_output([])
             self._wp_fb.text = '✅ Cleared.'
         except Exception as e:
