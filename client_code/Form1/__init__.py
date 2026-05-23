@@ -282,17 +282,15 @@ class Form1(Form1Template):
 
         # 3. Primary action buttons — single horizontal row
         actions = FlowPanel(spacing_above='none', spacing_below='none')
-        _write_note_btn = Button(text='Write note', role='tonal-button')
         _write_dir_btn = Button(text='Write directive', role='tonal-button')
         self._home_export_working_btn = Button(text='⬇ Working', role='tonal-button')
         self._home_export_audit_btn = Button(text='⬇ Audit', role='tonal-button')
         self._home_export_desktop_btn = Button(text='⬇ Desktop', role='tonal-button')
-        _write_note_btn.set_event_handler('click', lambda **kw: setattr(self._home_add_note_fb, 'text', '↓ below'))
         _write_dir_btn.set_event_handler('click', lambda **kw: setattr(self._directive_feedback, 'text', '↓ below'))
         self._home_export_working_btn.set_event_handler('click', self._home_export_working_clicked)
         self._home_export_audit_btn.set_event_handler('click', self._home_export_audit_clicked)
         self._home_export_desktop_btn.set_event_handler('click', self._home_export_desktop_clicked)
-        for b in [_write_note_btn, _write_dir_btn, self._home_export_working_btn, self._home_export_audit_btn, self._home_export_desktop_btn]:
+        for b in [_write_dir_btn, self._home_export_working_btn, self._home_export_audit_btn, self._home_export_desktop_btn]:
             actions.add_component(b)
         self._home_panel.add_component(actions)
         self._home_export_fb = Label(text='', role='body', font_size=14)
@@ -330,23 +328,7 @@ class Form1(Form1Template):
             self._research_toggle_btn.text = '▼' if self._research_briefing_body.visible else '▶'
         self._research_toggle_btn.set_event_handler('click', _toggle_rb)
 
-        # 4. Note input
-        note_row = FlowPanel(spacing_above='none', spacing_below='none')
-        self._home_note_input = TextArea(placeholder="What's on your mind?", height=70, width=520)
-        self._home_add_note_btn = Button(text='Add note', role='filled-button')
-        self._home_add_note_btn.set_event_handler('click', self._home_add_note_clicked)
-        note_row.add_component(self._home_note_input)
-        note_row.add_component(self._home_add_note_btn)
-        self._home_panel.add_component(note_row)
-        self._home_add_note_fb = Label(text='', role='body', font_size=14)
-        self._home_panel.add_component(self._home_add_note_fb)
-
-        # 5. Unaddressed notes
-        self._home_panel.add_component(Label(text='Unaddressed notes', bold=True, role='body', font_size=16))
-        self._home_notes_panel = ColumnPanel()
-        self._home_panel.add_component(self._home_notes_panel)
-
-        # 6. Pending inbox
+        # 5. Pending inbox
         self._home_inbox_lbl = Label(text='Pending Inbox', bold=True, role='body', font_size=16)
         self._home_panel.add_component(self._home_inbox_lbl)
         self._home_inbox_body = ColumnPanel()
@@ -1579,7 +1561,6 @@ class Form1(Form1Template):
         self._load_inbox()
         self._refresh_lean_status()
         self._refresh_auto_status()
-        self._load_home_notes()
         self._update_home_status_strip()
         self._load_research_briefing()
 
@@ -3575,51 +3556,6 @@ class Form1(Form1Template):
         self.refresh_data()
 
     # ── Home tab helpers ──────────────────────────────────────────────────────
-
-    def _load_home_notes(self):
-        self._home_notes_panel.clear()
-        try:
-            with anvil.server.no_loading_indicator:
-                notes = anvil.server.call('get_bill_notes')
-        except Exception as e:
-            self._home_notes_panel.add_component(Label(text=f'❌ {e}', role='body', font_size=18))
-            return
-        if not notes:
-            self._home_notes_panel.add_component(Label(text='No unaddressed notes.', role='body', font_size=18))
-            return
-        for note in notes:
-            self._home_notes_panel.add_component(self._make_note_row(note))
-
-    def _make_note_row(self, note):
-        row = FlowPanel(spacing_above='none', spacing_below='none')
-        ts = (note.get('created_at') or '')[:10]
-        row.add_component(Label(text=f"[{ts}] {note.get('content','')}", role='body', font_size=18))
-        btn = Button(text='Mark addressed', role='outlined-button')
-        note_id = note.get('id')
-        def _mark(note_id=note_id, row=row, **kw):
-            try:
-                with anvil.server.no_loading_indicator:
-                    anvil.server.call('mark_bill_note_addressed', note_id)
-                row.visible = False
-            except Exception as e:
-                self._home_add_note_fb.text = f'❌ {e}'
-        btn.set_event_handler('click', _mark)
-        row.add_component(btn)
-        return row
-
-    def _home_add_note_clicked(self, **event_args):
-        text = self._home_note_input.text or ''
-        if not text.strip():
-            self._home_add_note_fb.text = '❌ Note is empty.'
-            return
-        self._home_add_note_fb.text = 'Saving...'
-        try:
-            anvil.server.call('add_bill_note', text.strip())
-            self._home_note_input.text = ''
-            self._home_add_note_fb.text = '✅ Saved.'
-            self._load_home_notes()
-        except Exception as e:
-            self._home_add_note_fb.text = f'❌ {e}'
 
     def _home_export_working_clicked(self, **event_args):
         self._run_export('get_working_bundle', self._home_export_fb, self._home_export_fallback)
