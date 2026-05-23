@@ -2757,7 +2757,11 @@ class Form1(Form1Template):
                         g_btn.set_event_handler('click', _make_expand(g_btn, g_full))
                         card.add_component(g_btn)
                 else:
-                    card.add_component(Label(text='Gemini: no synthesis available.', role='body', font_size=13))
+                    reason = gemini.get('error_reason', '') or 'not_called'
+                    card.add_component(Label(
+                        text=f'Gemini: no synthesis — {reason}',
+                        role='body', font_size=13,
+                    ))
                 # Tavily section
                 tavily = entry.get('tavily', {})
                 t_answer = tavily.get('answer', '')
