@@ -2850,6 +2850,9 @@ class Form1(Form1Template):
                         block_lines.append('GITHUB REPOS:\n' + '\n'.join(gh_lines))
 
                 seen_urls.update(entry_seen)
+                # If filtering by a specific source and nothing was found, skip this entry
+                if source is not None and len(block_lines) == 1:
+                    continue  # only QUERY: line — no results for this source
                 block = '\n\n'.join(block_lines)
                 # Hard trim to ~800 words
                 words = block.split()
