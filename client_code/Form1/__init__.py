@@ -128,19 +128,16 @@ class Form1(Form1Template):
         top.add_component(ref_btn)
         self.content_panel.add_component(top)
 
-        # Tab navigation — five tabs
+        # Tab navigation — four tabs
         tab_row = FlowPanel(spacing_above='none', spacing_below='small')
         self._home_tab_btn = Button(text='Home', role='filled-button')
         self._workpad_tab_btn = Button(text='Workpad', role='tonal-button')
-        self._sessions_tab_btn = Button(text='Sessions', role='tonal-button')
         self._system_tab_btn = Button(text='System', role='tonal-button')
         self._home_tab_btn.set_event_handler('click', self._show_home_tab)
         self._workpad_tab_btn.set_event_handler('click', self._show_workpad_tab)
-        self._sessions_tab_btn.set_event_handler('click', self._show_sessions_tab)
         self._system_tab_btn.set_event_handler('click', self._show_system_tab)
         tab_row.add_component(self._home_tab_btn)
         tab_row.add_component(self._workpad_tab_btn)
-        tab_row.add_component(self._sessions_tab_btn)
         tab_row.add_component(self._system_tab_btn)
         self.content_panel.add_component(tab_row)
 
@@ -154,12 +151,6 @@ class Form1(Form1Template):
         self._workpad_panel.visible = False
         self._build_workpad_layout()
         self.content_panel.add_component(self._workpad_panel)
-
-        # Sessions panel (hidden)
-        self._sessions_panel = ColumnPanel()
-        self._sessions_panel.visible = False
-        self._build_sessions_layout()
-        self.content_panel.add_component(self._sessions_panel)
 
         # System panel (hidden) — wraps Fleet, Memory, Lessons, Skills, Artifacts, Research, Grader
         self._system_panel = ColumnPanel()
@@ -467,6 +458,33 @@ class Form1(Form1Template):
         grader_body.add_component(self._grader_panel)
         self._system_panel.add_component(grader_sec)
 
+        # Sessions export
+        sessions_sec, sessions_body, _ = self._make_section('Sessions')
+        sessions_body.add_component(Label(
+            text='Export copies recent session artifacts to clipboard for Desktop Claude.',
+            role='body', font_size=13,
+        ))
+        self._sessions_export_btn = Button(text='⬇ Export Sessions', role='tonal-button')
+        self._sessions_export_btn.set_event_handler('click', self._sessions_export_clicked)
+        sessions_body.add_component(self._sessions_export_btn)
+        self._sessions_export_fb = Label(text='', role='body', font_size=14)
+        sessions_body.add_component(self._sessions_export_fb)
+        self._sessions_export_panel = ColumnPanel()
+        self._sessions_export_panel.visible = False
+        sessions_body.add_component(self._sessions_export_panel)
+        self._system_panel.add_component(sessions_sec)
+
+        # Site regeneration
+        site_sec, site_body, _ = self._make_section('Site')
+        regen_row = FlowPanel(spacing_above='none', spacing_below='small')
+        self._regen_btn = Button(text='Regenerate Site', role='tonal-button')
+        self._regen_btn.set_event_handler('click', self._regenerate_site_clicked)
+        regen_row.add_component(self._regen_btn)
+        site_body.add_component(regen_row)
+        self._regen_feedback = Label(text='', role='body', font_size=14)
+        site_body.add_component(self._regen_feedback)
+        self._system_panel.add_component(site_sec)
+
     def _lazy_load_memory(self):
         if not self._memory_loaded:
             self._load_memory_collections()
@@ -545,13 +563,11 @@ class Form1(Form1Template):
         panels = {
             'home': self._home_panel,
             'workpad': self._workpad_panel,
-            'sessions': self._sessions_panel,
             'system': self._system_panel,
         }
         btns = {
             'home': self._home_tab_btn,
             'workpad': self._workpad_tab_btn,
-            'sessions': self._sessions_tab_btn,
             'system': self._system_tab_btn,
         }
         for name, panel in panels.items():
@@ -567,10 +583,6 @@ class Form1(Form1Template):
         if not getattr(self, '_workpad_loaded', False):
             self._workpad_loaded = True
             self._wp_load_state()
-
-    def _show_sessions_tab(self, **event_args):
-        self._set_tab('sessions')
-        self._load_sessions()
 
     def _show_system_tab(self, **event_args):
         self._set_tab('system')
@@ -889,180 +901,6 @@ class Form1(Form1Template):
         btn_row.add_component(deny_btn)
         self._home_inbox_body.add_component(btn_row)
         self._home_inbox_body.add_component(fb_label)
-
-    # ── Sessions tab ─────────────────────────────────────────────────────────
-
-    def _build_sessions_layout(self):
-        hdr = FlowPanel(spacing_above='small', spacing_below='small')
-        hdr.add_component(Label(text='Sessions', role='title', bold=True, font_size=22))
-        ref_btn = Button(text='\u21bb', role='text-button')
-        ref_btn.set_event_handler('click', lambda **kw: self._load_sessions())
-        hdr.add_component(ref_btn)
-        self._sessions_export_btn = Button(text='\u2b07 Export', role='tonal-button')
-        self._sessions_export_btn.set_event_handler('click', self._sessions_export_clicked)
-        hdr.add_component(self._sessions_export_btn)
-        self._sessions_panel.add_component(hdr)
-        self._sessions_panel.add_component(
-            Label(text='Export copies recent session artifacts to clipboard for Desktop Claude.',
-                  role='body', font_size=13)
-        )
-        self._sessions_export_fb = Label(text='', role='body', font_size=14)
-        self._sessions_panel.add_component(self._sessions_export_fb)
-        self._sessions_export_panel = ColumnPanel()
-        self._sessions_export_panel.visible = False
-        self._sessions_panel.add_component(self._sessions_export_panel)
-
-        # Boot Briefings section
-        self._briefings_lbl = Label(text='Boot Briefings', bold=True, role='body', font_size=18)
-        self._sessions_panel.add_component(self._briefings_lbl)
-        self._briefings_body = ColumnPanel()
-        self._sessions_panel.add_component(self._briefings_body)
-        self._sessions_panel.add_component(Label(text='\u2015' * 20, role='body', font_size=18))
-
-        self._sessions_status_card = ColumnPanel(role='outlined-card')
-        self._sessions_panel.add_component(self._sessions_status_card)
-
-        self._sessions_panel.add_component(Label(text='―' * 20, role='body', font_size=18))
-        site_hdr = FlowPanel(spacing_above='none', spacing_below='small')
-        site_hdr.add_component(Label(text='Site Status', bold=True, role='body', font_size=18))
-        self._regen_btn = Button(text='Regenerate Site', role='tonal-button')
-        self._regen_btn.set_event_handler('click', self._regenerate_site_clicked)
-        site_hdr.add_component(self._regen_btn)
-        self._sessions_panel.add_component(site_hdr)
-        self._regen_feedback = Label(text='', role='body', font_size=14)
-        self._sessions_panel.add_component(self._regen_feedback)
-        self._site_status_card = ColumnPanel(role='outlined-card')
-        self._sessions_panel.add_component(self._site_status_card)
-
-
-    def _load_sessions(self):
-        # Boot briefings
-        self._briefings_body.clear()
-        try:
-            with anvil.server.no_loading_indicator:
-                briefings = anvil.server.call('get_boot_briefings', 5)
-            unacked = [b for b in briefings if not b.get('acknowledged')]
-            self._briefings_lbl.text = f'Boot Briefings ({len(unacked)} unread)' if unacked else 'Boot Briefings'
-            if not briefings:
-                self._briefings_body.add_component(Label(text='No briefings yet.', role='body', font_size=14))
-            else:
-                for b in briefings:
-                    self._briefings_body.add_component(self._build_briefing_card(b))
-        except Exception as e:
-            self._briefings_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=13))
-
-        # Live status
-        self._sessions_status_card.clear()
-        try:
-            with anvil.server.no_loading_indicator:
-                status = anvil.server.call('get_session_status')
-            if status is None:
-                self._sessions_status_card.add_component(
-                    Label(text='\U0001f7e2 No session data yet', role='body', font_size=18)
-                )
-            else:
-                phase = status.get('phase') or 'unknown'
-                card_id = status.get('card_id') or '\u2014'
-                action = status.get('current_action') or ''
-                updated = (status.get('updated_at') or '')[:16].replace('T', ' ')
-                _phase_icons = {
-                    'started': '\U0001f7e1', 'executing': '\U0001f7e0',
-                    'complete': '\U0001f7e2', 'error': '\U0001f534', 'timeout': '\U0001f534',
-                }
-                icon = _phase_icons.get(phase, '\u26aa')
-                is_active = phase in ('started', 'executing')
-                status_text = f'{icon} {phase.upper()}'
-                if is_active:
-                    status_text += f' \u2014 {card_id}'
-                self._sessions_status_card.add_component(
-                    Label(text=status_text, bold=True, role='body', font_size=18)
-                )
-                if action:
-                    self._sessions_status_card.add_component(
-                        Label(text=action, role='body', font_size=18)
-                    )
-                self._sessions_status_card.add_component(
-                    Label(text=f'Updated: {updated}', role='body', font_size=14)
-                )
-        except Exception as e:
-            self._sessions_status_card.add_component(
-                Label(text=f'Status unavailable: {e}', role='body', font_size=18)
-            )
-
-        # Site status
-        self._site_status_card.clear()
-        try:
-            with anvil.server.no_loading_indicator:
-                site = anvil.server.call('get_site_status')
-            generated = (site.get('generated_at') or '')[:16].replace('T', ' ')
-            agents = site.get('agent_count', '?')
-            mode = site.get('mode') or '?'
-            directive = (site.get('current_directive') or '').strip()[:80]
-            self._site_status_card.add_component(
-                Label(text=f'mode: {mode}  |  agents: {agents}  |  as of: {generated} UTC', role='body', font_size=14)
-            )
-            if directive:
-                self._site_status_card.add_component(
-                    Label(text=f'Directive: {directive}', role='body', font_size=13)
-                )
-            for s in site.get('last_sessions', []):
-                line = f"{s.get('date','')}  {s.get('descriptor','')}  —  {s.get('outcome','')}"
-                self._site_status_card.add_component(
-                    Label(text=line[:120], role='body', font_size=13)
-                )
-        except Exception as e:
-            self._site_status_card.add_component(
-                Label(text=f'Site status unavailable: {e}', role='body', font_size=14)
-            )
-
-    def _build_briefing_card(self, briefing):
-        briefing_id = briefing.get('id')
-        created = (briefing.get('created_at') or '')[:16].replace('T', ' ')
-        directive = briefing.get('directive_seen') or '—'
-        content = briefing.get('content') or ''
-        acked = briefing.get('acknowledged', False)
-
-        card = ColumnPanel(role='outlined-card')
-        icon = '✅ ' if acked else '🔔 '
-        meta = f'{icon}{created}  |  directive: {directive}'
-        card.add_component(Label(text=meta, bold=True, role='body', font_size=14))
-
-        expand_btn = Button(text='+', role='text-button')
-        hdr = FlowPanel(spacing_above='none', spacing_below='none')
-        hdr.add_component(expand_btn)
-        card.add_component(hdr)
-
-        detail = ColumnPanel()
-        detail.visible = False
-        detail.add_component(Label(text=content, role='body', font_size=13))
-
-        if not acked:
-            ack_fb = Label(text='', role='body', font_size=13)
-            ack_btn = Button(text='Acknowledge', role='tonal-button')
-            def _make_ack(bid, btn, fb, c):
-                def _h(**kw):
-                    try:
-                        anvil.server.call('acknowledge_boot_briefing', bid)
-                        fb.text = '✅ Acknowledged'
-                        btn.enabled = False
-                        c.role = None
-                    except Exception as ex:
-                        fb.text = f'❌ {ex}'
-                return _h
-            ack_btn.set_event_handler('click', _make_ack(briefing_id, ack_btn, ack_fb, card))
-            detail.add_component(ack_btn)
-            detail.add_component(ack_fb)
-
-        card.add_component(detail)
-
-        def _make_expand(det, btn):
-            def _e(**kw):
-                det.visible = not det.visible
-                btn.text = '−' if det.visible else '+'
-            return _e
-
-        expand_btn.set_event_handler('click', _make_expand(detail, expand_btn))
-        return card
 
     # ── Lessons tab ───────────────────────────────────────────────────────────
 
@@ -2552,13 +2390,6 @@ class Form1(Form1Template):
             result = anvil.server.call('update_site')
             ts = (result.get('generated_at') or '')[:16].replace('T', ' ')
             self._regen_feedback.text = f'✅ Site updated at {ts} UTC'
-            self._site_status_card.clear()
-            with anvil.server.no_loading_indicator:
-                site = anvil.server.call('get_site_status')
-            generated = (site.get('generated_at') or '')[:16].replace('T', ' ')
-            self._site_status_card.add_component(
-                Label(text=f"mode: {site.get('mode','?')}  |  agents: {site.get('agent_count','?')}  |  as of: {generated} UTC", role='body', font_size=14)
-            )
         except Exception as e:
             self._regen_feedback.text = f'❌ Error: {e}'
         self._regen_btn.enabled = True
