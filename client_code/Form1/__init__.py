@@ -2880,6 +2880,9 @@ class Form1(Form1Template):
         label = {'gemini': 'Gemini', 'tavily': 'Tavily', 'brave': 'Brave', 'github': 'GitHub'}.get(source, 'All')
         text = '\n\n---\n\n'.join(parts) if parts else ''
         self._wp_copy_fallback.visible = False
+        if not text:
+            self._wp_fb.text = f'ℹ️ No {label} results in this session to copy.'
+            return
         copied = False
         try:
             anvil.js.window.navigator.clipboard.writeText(text)
