@@ -2713,7 +2713,7 @@ class Form1(Form1Template):
         self._wp_fb.text = 'Searching Brave, Tavily, GitHub, Gemini…'
         self._wp_search_btn.enabled = False
         try:
-            anvil.server.call('search_all', query, 5)
+            anvil.server.call('search_all', query, 10)
             state = anvil.server.call('get_workpad_state')
             self._wp_render_output(state.get('output_entries', []))
             self._wp_fb.text = '✅ Search complete.'
@@ -2776,7 +2776,7 @@ class Form1(Form1Template):
             if url in already_seen:
                 return f'• {title} {url} [see above]{flag}'
             already_seen.add(url)
-            sentence = (snippet[:120] + '…' if len(snippet) > 120 else snippet)
+            sentence = (snippet[:200] + '…' if len(snippet) > 200 else snippet)
             return f'• {title} | {url}{flag} — {sentence}'
 
         def _word_count(text):
@@ -2794,7 +2794,7 @@ class Form1(Form1Template):
             if action == 'search_all':
                 entry_seen = set(seen_urls)  # per-entry dedup; updates seen_urls at end
                 block_lines = [f'QUERY: {query}']
-                word_budget = 800
+                word_budget = 1500
 
                 if source in (None, 'gemini'):
                     g_answer = (entry.get('gemini', {}).get('answer', '') or '').strip()
@@ -2804,7 +2804,7 @@ class Form1(Form1Template):
                         plain = _re2.sub(r'\*+|#+\s?|`+', '', g_answer).strip()
                         # Trim to fit budget
                         words = plain.split()
-                        plain = ' '.join(words[:180]) + ('…' if len(words) > 180 else '')
+                        plain = ' '.join(words[:300]) + ('…' if len(words) > 300 else '')
                         block_lines.append(f'GEMINI SYNTHESIS: {plain}')
 
                 if source in (None, 'tavily'):
@@ -2813,7 +2813,7 @@ class Form1(Form1Template):
                     t_results = tavily.get('results', [])
                     if t_answer:
                         words = t_answer.split()
-                        short = ' '.join(words[:60]) + ('…' if len(words) > 60 else '')
+                        short = ' '.join(words[:100]) + ('…' if len(words) > 100 else '')
                         block_lines.append(f'TAVILY SUMMARY: {short}')
                     if t_results:
                         src_lines = [_fmt_source_line(r, entry_seen) for r in t_results]
