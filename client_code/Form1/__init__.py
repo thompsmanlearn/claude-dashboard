@@ -357,11 +357,9 @@ class Form1(Form1Template):
         self._wp_copy_brave_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='brave'))
         self._wp_clear_btn = Button(text='Clear', role='outlined-button')
         self._wp_clear_btn.set_event_handler('click', self._wp_clear)
-        self._wp_promote_btn = Button(text='Promote to thread', role='tonal-button')
-        self._wp_promote_btn.set_event_handler('click', self._wp_show_promote_form)
         for btn in [self._wp_search_btn, self._wp_read_btn, self._wp_copy_btn,
                     self._wp_copy_gemini_btn, self._wp_copy_tavily_btn, self._wp_copy_brave_btn,
-                    self._wp_clear_btn, self._wp_promote_btn]:
+                    self._wp_clear_btn]:
             actions_row.add_component(btn)
         self._workpad_panel.add_component(actions_row)
 
@@ -371,25 +369,6 @@ class Form1(Form1Template):
         self._wp_copy_fallback.visible = False
         self._workpad_panel.add_component(self._wp_copy_fallback)
 
-        # Promote mini-form (hidden until button clicked)
-        self._wp_promote_form = ColumnPanel()
-        self._wp_promote_form.visible = False
-        self._wp_promote_form.add_component(Label(text='New thread', role='title', font_size=20))
-        self._wp_promote_title = TextBox(placeholder='Thread title', font_size=16)
-        self._wp_promote_question = TextBox(placeholder='Opening question', font_size=16)
-        promote_btns = FlowPanel(spacing_above='small', spacing_below='small')
-        self._wp_confirm_btn = Button(text='Confirm', role='filled-button')
-        self._wp_confirm_btn.set_event_handler('click', self._wp_confirm_promote)
-        self._wp_cancel_btn = Button(text='Cancel', role='outlined-button')
-        self._wp_cancel_btn.set_event_handler('click', self._wp_cancel_promote)
-        promote_btns.add_component(self._wp_confirm_btn)
-        promote_btns.add_component(self._wp_cancel_btn)
-        self._wp_promote_fb = Label(text='', role='body', font_size=14)
-        self._wp_promote_form.add_component(self._wp_promote_title)
-        self._wp_promote_form.add_component(self._wp_promote_question)
-        self._wp_promote_form.add_component(promote_btns)
-        self._wp_promote_form.add_component(self._wp_promote_fb)
-        self._workpad_panel.add_component(self._wp_promote_form)
 
         # Output region — current session only
         self._workpad_panel.add_component(Label(text='Output', role='title', font_size=20))
@@ -3044,32 +3023,3 @@ class Form1(Form1Template):
         except Exception as e:
             self._wp_fb.text = f'❌ {e}'
 
-    def _wp_show_promote_form(self, **event_args):
-        self._wp_do_save()
-        self._wp_promote_title.text = ''
-        self._wp_promote_question.text = ''
-        self._wp_promote_fb.text = ''
-        self._wp_promote_form.visible = True
-
-    def _wp_cancel_promote(self, **event_args):
-        self._wp_promote_form.visible = False
-
-    def _wp_confirm_promote(self, **event_args):
-        title = (self._wp_promote_title.text or '').strip()
-        question = (self._wp_promote_question.text or '').strip()
-        if not title:
-            self._wp_promote_fb.text = '❌ Title is required.'
-            return
-        if not question:
-            self._wp_promote_fb.text = '❌ Question is required.'
-            return
-        self._wp_promote_fb.text = 'Creating thread…'
-        self._wp_confirm_btn.enabled = False
-        try:
-            result = anvil.server.call('promote_workpad_to_thread', title, question)
-            self._wp_promote_form.visible = False
-            self._wp_fb.text = f'✅ Thread "{result.get("title", title)}" created — navigate to Threads tab to view.'
-        except Exception as e:
-            self._wp_promote_fb.text = f'❌ {e}'
-        finally:
-            self._wp_confirm_btn.enabled = True
