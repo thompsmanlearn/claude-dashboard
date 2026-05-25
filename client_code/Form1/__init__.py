@@ -346,11 +346,13 @@ class Form1(Form1Template):
         self._wp_copy_tavily_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='tavily'))
         self._wp_copy_brave_btn = Button(text='Copy Brave', role='outlined-button')
         self._wp_copy_brave_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='brave'))
+        self._wp_copy_github_btn = Button(text='Copy GitHub', role='outlined-button')
+        self._wp_copy_github_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='github'))
         self._wp_clear_btn = Button(text='Clear', role='outlined-button')
         self._wp_clear_btn.set_event_handler('click', self._wp_clear)
         for btn in [self._wp_search_btn, self._wp_read_btn, self._wp_copy_btn,
                     self._wp_copy_gemini_btn, self._wp_copy_tavily_btn, self._wp_copy_brave_btn,
-                    self._wp_clear_btn]:
+                    self._wp_copy_github_btn, self._wp_clear_btn]:
             actions_row.add_component(btn)
         self._workpad_panel.add_component(actions_row)
 
@@ -2634,6 +2636,34 @@ class Form1(Form1Template):
                 _render_result_list(card, tavily.get('results', []), '🟢 Tavily results')
                 # Brave section
                 _render_result_list(card, entry.get('brave', []), '🔵 Brave results')
+                # GitHub repos section
+                github_repos = entry.get('github', [])
+                if github_repos:
+                    card.add_component(Label(text='⚫ GitHub repos', role='body', font_size=13, bold=True))
+                    for repo in github_repos:
+                        r_row = ColumnPanel()
+                        stars = repo.get('stars', 0)
+                        lang = repo.get('language', '')
+                        meta = f'⭐{stars}'
+                        if lang:
+                            meta += f' · {lang}'
+                        pushed = repo.get('pushed_at', '')
+                        if pushed:
+                            meta += f' · pushed {pushed}'
+                        repo_btn = Button(
+                            text=f"{repo.get('name', '')} ({meta})",
+                            role='tonal-button', font_size=14,
+                        )
+                        repo_btn.set_event_handler('click', _make_url_setter(repo.get('url', '')))
+                        r_row.add_component(repo_btn)
+                        desc = repo.get('description', '')
+                        if desc:
+                            r_row.add_component(Label(text=desc[:180], role='body', font_size=13))
+                        topics = repo.get('topics', [])
+                        if topics:
+                            r_row.add_component(Label(text=' '.join(f'#{t}' for t in topics),
+                                                       role='body', font_size=12))
+                        card.add_component(r_row)
             elif action == 'search':
                 query_text = entry.get('query', '')
                 results = entry.get('results', [])
@@ -2680,7 +2710,7 @@ class Form1(Form1Template):
         if not query:
             self._wp_fb.text = '❌ Nothing to search.'
             return
-        self._wp_fb.text = 'Searching Brave, Tavily, Gemini…'
+        self._wp_fb.text = 'Searching Brave, Tavily, GitHub, Gemini…'
         self._wp_search_btn.enabled = False
         try:
             anvil.server.call('search_all', query, 5)
@@ -2795,6 +2825,30 @@ class Form1(Form1Template):
                         src_lines = [_fmt_source_line(r, entry_seen) for r in brave]
                         block_lines.append('BRAVE SOURCES:\n' + '\n'.join(src_lines))
 
+                if source in (None, 'github'):
+                    github = entry.get('github', [])
+                    if github:
+                        import re as _re3
+                        gh_lines = []
+                        for repo in github:
+                            name = repo.get('name', '')
+                            url = repo.get('url', '')
+                            stars = repo.get('stars', 0)
+                            lang = repo.get('language', '')
+                            pushed = repo.get('pushed_at', '')
+                            desc = repo.get('description', '')
+                            flag = _age_flag(pushed)
+                            meta = f'⭐{stars}'
+                            if lang:
+                                meta += f', {lang}'
+                            if url in entry_seen:
+                                gh_lines.append(f'• {name} ({meta}) | {url} [see above]{flag}')
+                            else:
+                                entry_seen.add(url)
+                                snippet = desc[:100] + ('…' if len(desc) > 100 else '')
+                                gh_lines.append(f'• {name} ({meta}) | {url}{flag} — {snippet}')
+                        block_lines.append('GITHUB REPOS:\n' + '\n'.join(gh_lines))
+
                 seen_urls.update(entry_seen)
                 block = '\n\n'.join(block_lines)
                 # Hard trim to ~800 words
@@ -2820,7 +2874,7 @@ class Form1(Form1Template):
                     trimmed = ' '.join(words[:150]) + ('…' if len(words) > 150 else '')
                     parts.append(f'URL FETCHES:\n{url}\n{trimmed}')
 
-        label = {'gemini': 'Gemini', 'tavily': 'Tavily', 'brave': 'Brave'}.get(source, 'All')
+        label = {'gemini': 'Gemini', 'tavily': 'Tavily', 'brave': 'Brave', 'github': 'GitHub'}.get(source, 'All')
         text = '\n\n---\n\n'.join(parts) if parts else ''
         self._wp_copy_fallback.visible = False
         copied = False
