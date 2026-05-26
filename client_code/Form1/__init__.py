@@ -336,6 +336,8 @@ class Form1(Form1Template):
         actions_row = FlowPanel(spacing_above='small', spacing_below='small')
         self._wp_search_btn = Button(text='Search', role='filled-button', enabled=False)
         self._wp_search_btn.set_event_handler('click', self._wp_search)
+        self._wp_deep_research_btn = Button(text='Deep Research', role='tonal-button', enabled=False)
+        self._wp_deep_research_btn.set_event_handler('click', self._wp_deep_research)
         self._wp_read_btn = Button(text='Read URL', role='filled-button')
         self._wp_read_btn.set_event_handler('click', self._wp_read_url)
         self._wp_copy_btn = Button(text='Copy All', role='tonal-button')
@@ -350,7 +352,7 @@ class Form1(Form1Template):
         self._wp_copy_github_btn.set_event_handler('click', lambda **kw: self._wp_copy(source='github'))
         self._wp_clear_btn = Button(text='Clear', role='outlined-button')
         self._wp_clear_btn.set_event_handler('click', self._wp_clear)
-        for btn in [self._wp_search_btn, self._wp_read_btn, self._wp_copy_btn,
+        for btn in [self._wp_search_btn, self._wp_deep_research_btn, self._wp_read_btn, self._wp_copy_btn,
                     self._wp_copy_gemini_btn, self._wp_copy_tavily_btn, self._wp_copy_brave_btn,
                     self._wp_copy_github_btn, self._wp_clear_btn]:
             actions_row.add_component(btn)
@@ -2475,7 +2477,9 @@ class Form1(Form1Template):
 
     def _wp_input_changed(self, **event_args):
         self._wp_dirty[0] = True
-        self._wp_search_btn.enabled = bool((self._wp_input.text or '').strip())
+        has_input = bool((self._wp_input.text or '').strip())
+        self._wp_search_btn.enabled = has_input
+        self._wp_deep_research_btn.enabled = has_input
 
     def _wp_autosave(self, **event_args):
         if self._wp_dirty[0]:
@@ -2499,7 +2503,9 @@ class Form1(Form1Template):
             state = anvil.server.call('get_workpad_state')
             self._wp_input.text = state.get('input_text', '')
             self._wp_url.text = state.get('attach_url', '')
-            self._wp_search_btn.enabled = bool((self._wp_input.text or '').strip())
+            has_input = bool((self._wp_input.text or '').strip())
+            self._wp_search_btn.enabled = has_input
+            self._wp_deep_research_btn.enabled = has_input
             entries = state.get('output_entries', [])
             # Everything already in Supabase at load time is "history" for this session
             self._wp_session_start_idx = len(entries)
@@ -2664,6 +2670,25 @@ class Form1(Form1Template):
                             r_row.add_component(Label(text=' '.join(f'#{t}' for t in topics),
                                                        role='body', font_size=12))
                         card.add_component(r_row)
+            elif action == 'deep_research':
+                query_text = entry.get('query', '')
+                artifact = entry.get('artifact_content', '')
+                card.add_component(Label(
+                    text=f'🔬 Deep Research {_rel_time(ts)} — {query_text[:60]}',
+                    role='body', font_size=13, bold=True,
+                ))
+                if artifact:
+                    trunc = artifact[:1000] + ('…' if len(artifact) > 1000 else '')
+                    trunc_lbl = Label(text=trunc, role='body', font_size=13)
+                    card.add_component(trunc_lbl)
+                    if len(artifact) > 1000:
+                        full_lbl = Label(text=artifact, role='body', font_size=13, visible=False)
+                        exp_btn = Button(text='Show full artifact', role='tonal-button', font_size=12)
+                        card.add_component(full_lbl)
+                        exp_btn.set_event_handler('click', _make_expand(exp_btn, full_lbl))
+                        card.add_component(exp_btn)
+                else:
+                    card.add_component(Label(text='(no artifact content)', role='body', font_size=13))
             elif action == 'search':
                 query_text = entry.get('query', '')
                 results = entry.get('results', [])
@@ -2721,6 +2746,49 @@ class Form1(Form1Template):
             self._wp_fb.text = f'❌ {e}'
         finally:
             self._wp_search_btn.enabled = bool(query)
+
+    def _wp_deep_research(self, **event_args):
+        import time as _time
+        self._wp_do_save()
+        query = (self._wp_input.text or '').strip()
+        if not query:
+            self._wp_fb.text = '❌ Nothing to research.'
+            return
+        self._wp_fb.text = '🔬 Starting deep research…'
+        self._wp_deep_research_btn.enabled = False
+        self._wp_search_btn.enabled = False
+        try:
+            with anvil.server.no_loading_indicator:
+                resp = anvil.server.call('run_deep_research', query)
+            job_id = resp.get('job_id', '')
+            if not job_id:
+                raise Exception('No job_id returned')
+            # Poll until done or error (max ~3 minutes)
+            for attempt in range(36):
+                _time.sleep(5)
+                self._wp_fb.text = f'🔬 Deep research running… ({(attempt + 1) * 5}s)'
+                with anvil.server.no_loading_indicator:
+                    status = anvil.server.call('get_deep_research_status', job_id)
+                if status.get('status') == 'done':
+                    # Reload workpad to pick up the new entry
+                    with anvil.server.no_loading_indicator:
+                        state = anvil.server.call('get_workpad_state')
+                    self._wp_render_output(state.get('output_entries', []))
+                    runtime = (status.get('result') or {}).get('runtime_s', '?')
+                    self._wp_fb.text = f'✅ Deep research complete ({runtime}s). Artifact written.'
+                    break
+                elif status.get('status') == 'error':
+                    err = status.get('error', 'unknown error')
+                    self._wp_fb.text = f'❌ Deep research failed: {err}'
+                    break
+            else:
+                self._wp_fb.text = '⚠️ Deep research timed out — check server logs.'
+        except Exception as e:
+            self._wp_fb.text = f'❌ {e}'
+        finally:
+            has_input = bool(query)
+            self._wp_deep_research_btn.enabled = has_input
+            self._wp_search_btn.enabled = has_input
 
     def _wp_read_url(self, **event_args):
         self._wp_do_save()
@@ -2868,7 +2936,13 @@ class Form1(Form1Template):
                     lines.append(_fmt_source_line(r, seen_urls))
                 parts.append('\n'.join(lines))
 
-            elif action not in ('search', 'search_all') and source is None:
+            elif action == 'deep_research' and source is None:
+                artifact = (entry.get('artifact_content', '') or '').strip()
+                q_text = entry.get('query', '')
+                if artifact:
+                    parts.append(f'DEEP RESEARCH: {q_text}\n\n{artifact}')
+
+            elif action not in ('search', 'search_all', 'deep_research') and source is None:
                 # URL fetch — already stripped by uplink; trim to 150 words
                 result = (entry.get('result', '') or '').strip()
                 url = entry.get('url', '') or action
