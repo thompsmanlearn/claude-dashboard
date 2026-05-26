@@ -2940,7 +2940,15 @@ class Form1(Form1Template):
                 artifact = (entry.get('artifact_content', '') or '').strip()
                 q_text = entry.get('query', '')
                 if artifact:
-                    parts.append(f'DEEP RESEARCH: {q_text}\n\n{artifact}')
+                    # Strip Query Expansion section — pipeline internals, not useful for Desktop Claude
+                    import re as _re_dr
+                    stripped = _re_dr.sub(
+                        r'## Query Expansion.*?(?=## Pass One Findings)',
+                        '',
+                        artifact,
+                        flags=_re_dr.DOTALL,
+                    ).strip()
+                    parts.append(f'DEEP RESEARCH: {q_text}\n\n{stripped}')
 
             elif action not in ('search', 'search_all', 'deep_research') and source is None:
                 # URL fetch — already stripped by uplink; trim to 150 words
