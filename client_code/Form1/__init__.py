@@ -360,6 +360,21 @@ class Form1(Form1Template):
 
         self._wp_fb = Label(text='', role='body', font_size=14)
         self._workpad_panel.add_component(self._wp_fb)
+
+        # Plan review panel — shown between pass 1 and pass 2
+        self._wp_plan_card = ColumnPanel(visible=False)
+        self._wp_plan_card.add_component(Label(
+            text='📋 Pass 1 complete — review the research plan for Pass 2',
+            role='title', font_size=16,
+        ))
+        self._wp_plan_label = Label(text='', role='body', font_size=13)
+        self._wp_plan_card.add_component(self._wp_plan_label)
+        self._wp_proceed_btn = Button(text='Proceed with Pass 2', role='filled-button')
+        self._wp_proceed_btn.set_event_handler('click', self._wp_proceed_pass2)
+        self._wp_plan_card.add_component(self._wp_proceed_btn)
+        self._workpad_panel.add_component(self._wp_plan_card)
+        self._wp_pending_job_id = None
+
         self._wp_copy_fallback = ColumnPanel()
         self._wp_copy_fallback.visible = False
         self._workpad_panel.add_component(self._wp_copy_fallback)
@@ -2763,32 +2778,89 @@ class Form1(Form1Template):
             job_id = resp.get('job_id', '')
             if not job_id:
                 raise Exception('No job_id returned')
-            # Poll until done or error (max ~3 minutes)
+            # Phase 1: poll until awaiting_review, done, or error
             for attempt in range(36):
                 _time.sleep(5)
-                self._wp_fb.text = f'🔬 Deep research running… ({(attempt + 1) * 5}s)'
+                self._wp_fb.text = f'🔬 Pass 1 running… ({(attempt + 1) * 5}s)'
                 with anvil.server.no_loading_indicator:
                     status = anvil.server.call('get_deep_research_status', job_id)
-                if status.get('status') == 'done':
-                    # Reload workpad to pick up the new entry
-                    with anvil.server.no_loading_indicator:
-                        state = anvil.server.call('get_workpad_state')
-                    self._wp_render_output(state.get('output_entries', []))
-                    runtime = (status.get('result') or {}).get('runtime_s', '?')
-                    self._wp_fb.text = f'✅ Deep research complete ({runtime}s). Artifact written.'
-                    break
-                elif status.get('status') == 'error':
-                    err = status.get('error', 'unknown error')
-                    self._wp_fb.text = f'❌ Deep research failed: {err}'
-                    break
-            else:
-                self._wp_fb.text = '⚠️ Deep research timed out — check server logs.'
+                s = status.get('status')
+                if s == 'awaiting_review':
+                    self._wp_show_plan(job_id, status.get('plan', {}))
+                    return  # Proceed button resumes from here
+                elif s == 'done':
+                    self._wp_finish_deep_research(status)
+                    return
+                elif s == 'error':
+                    self._wp_fb.text = f'❌ Deep research failed: {status.get("error", "unknown")}'
+                    return
+            self._wp_fb.text = '⚠️ Deep research timed out — check server logs.'
         except Exception as e:
             self._wp_fb.text = f'❌ {e}'
         finally:
-            has_input = bool(query)
+            has_input = bool((self._wp_input.text or '').strip())
             self._wp_deep_research_btn.enabled = has_input
             self._wp_search_btn.enabled = has_input
+
+    def _wp_show_plan(self, job_id, plan):
+        """Display the pass-1 plan for review."""
+        self._wp_pending_job_id = job_id
+        gaps = plan.get('gaps', [])
+        counts = plan.get('pass1_source_counts', {})
+        total_p1 = sum(counts.values())
+        clusters = plan.get('cluster_count', '?')
+        lines = [f'Pass 1: {total_p1} results across {clusters} clusters\n']
+        for g in gaps:
+            srcs = ', '.join(g.get('sources') or [])
+            gap_type = g.get('type', '?')
+            priority = g.get('priority', '?')
+            lines.append(f'[{gap_type} / {priority}]  {g.get("gap", "")}')
+            lines.append(f'    → {srcs}\n')
+        self._wp_plan_label.text = '\n'.join(lines)
+        self._wp_plan_card.visible = True
+        self._wp_fb.text = '⏸ Review the plan below, then click Proceed to run Pass 2.'
+
+    def _wp_proceed_pass2(self, **event_args):
+        """User approved the plan — resume pass 2."""
+        import time as _time
+        job_id = self._wp_pending_job_id
+        if not job_id:
+            return
+        self._wp_plan_card.visible = False
+        self._wp_fb.text = '🔬 Pass 2 running…'
+        self._wp_deep_research_btn.enabled = False
+        self._wp_search_btn.enabled = False
+        try:
+            with anvil.server.no_loading_indicator:
+                anvil.server.call('approve_deep_research_plan', job_id)
+            for attempt in range(36):
+                _time.sleep(5)
+                self._wp_fb.text = f'🔬 Pass 2 running… ({(attempt + 1) * 5}s)'
+                with anvil.server.no_loading_indicator:
+                    status = anvil.server.call('get_deep_research_status', job_id)
+                s = status.get('status')
+                if s == 'done':
+                    self._wp_finish_deep_research(status)
+                    return
+                elif s == 'error':
+                    self._wp_fb.text = f'❌ Pass 2 failed: {status.get("error", "unknown")}'
+                    return
+            self._wp_fb.text = '⚠️ Pass 2 timed out — check server logs.'
+        except Exception as e:
+            self._wp_fb.text = f'❌ {e}'
+        finally:
+            has_input = bool((self._wp_input.text or '').strip())
+            self._wp_deep_research_btn.enabled = has_input
+            self._wp_search_btn.enabled = has_input
+            self._wp_pending_job_id = None
+
+    def _wp_finish_deep_research(self, status):
+        """Reload workpad output and show completion message."""
+        with anvil.server.no_loading_indicator:
+            state = anvil.server.call('get_workpad_state')
+        self._wp_render_output(state.get('output_entries', []))
+        runtime = (status.get('result') or {}).get('runtime_s', '?')
+        self._wp_fb.text = f'✅ Deep research complete ({runtime}s). Artifact written.'
 
     def _wp_read_url(self, **event_args):
         self._wp_do_save()
