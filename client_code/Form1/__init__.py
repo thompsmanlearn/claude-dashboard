@@ -564,8 +564,11 @@ class Form1(Form1Template):
         session = data.get('session')
         auto_cycle = data.get('auto_cycle_enabled', False)
         proj = data.get('project', {})
+        proj_status = proj.get('status', 'draft')
 
-        if auto_cycle:
+        if proj_status == 'draft':
+            return  # stay in Draft state — don't let poll timer override the decompose view
+        elif auto_cycle:
             self._proj_run_name_lbl.text = proj.get('name', '')
             self._proj_render_node_list(self._proj_run_node_panel, nodes)
             phase = (session or {}).get('phase') or ''
