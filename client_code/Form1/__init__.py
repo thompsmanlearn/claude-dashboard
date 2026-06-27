@@ -128,16 +128,19 @@ class Form1(Form1Template):
         top.add_component(ref_btn)
         self.content_panel.add_component(top)
 
-        # Tab navigation — four tabs
+        # Tab navigation — Home / Workpad / Projects / System
         tab_row = FlowPanel(spacing_above='none', spacing_below='small')
         self._home_tab_btn = Button(text='Home', role='filled-button')
         self._workpad_tab_btn = Button(text='Workpad', role='tonal-button')
+        self._projects_tab_btn = Button(text='Projects', role='tonal-button')
         self._system_tab_btn = Button(text='System', role='tonal-button')
         self._home_tab_btn.set_event_handler('click', self._show_home_tab)
         self._workpad_tab_btn.set_event_handler('click', self._show_workpad_tab)
+        self._projects_tab_btn.set_event_handler('click', self._show_projects_tab)
         self._system_tab_btn.set_event_handler('click', self._show_system_tab)
         tab_row.add_component(self._home_tab_btn)
         tab_row.add_component(self._workpad_tab_btn)
+        tab_row.add_component(self._projects_tab_btn)
         tab_row.add_component(self._system_tab_btn)
         self.content_panel.add_component(tab_row)
 
@@ -151,6 +154,12 @@ class Form1(Form1Template):
         self._workpad_panel.visible = False
         self._build_workpad_layout()
         self.content_panel.add_component(self._workpad_panel)
+
+        # Projects panel (hidden)
+        self._projects_panel = ColumnPanel()
+        self._projects_panel.visible = False
+        self._build_projects_layout()
+        self.content_panel.add_component(self._projects_panel)
 
         # System panel (hidden) — wraps Fleet, Memory, Lessons, Skills, Artifacts, Research, Grader
         self._system_panel = ColumnPanel()
@@ -403,6 +412,272 @@ class Form1(Form1Template):
         self._wp_save_timer.set_event_handler('tick', self._wp_autosave)
         self._workpad_panel.add_component(self._wp_save_timer)
 
+    # ── Projects tab ─────────────────────────────────────────────────────────
+
+    def _build_projects_layout(self):
+        self._proj_current_id = [None]       # active/draft project id
+        self._proj_draft_nodes = [[]]        # nodes from last decompose
+        self._proj_poll_timer = [None]
+
+        self._projects_panel.add_component(Label(text='Projects', role='headline', bold=True, font_size=22))
+        self._proj_fb = Label(text='', role='body', font_size=14)
+        self._projects_panel.add_component(self._proj_fb)
+
+        # ── Draft state ──────────────────────────────────────────────────────
+        self._proj_draft_panel = ColumnPanel()
+        self._projects_panel.add_component(self._proj_draft_panel)
+
+        self._proj_goal_input = TextArea(
+            placeholder='Describe the goal or problem…',
+            height=100, width=520, font_size=15,
+        )
+        self._proj_draft_panel.add_component(self._proj_goal_input)
+
+        self._proj_revision_row = FlowPanel(spacing_above='small', spacing_below='none')
+        self._proj_revision_row.add_component(Label(text='Revision notes:', role='body', font_size=14))
+        self._proj_revision_input = TextBox(placeholder='What to change…', width=380, font_size=14)
+        self._proj_revision_row.add_component(self._proj_revision_input)
+        self._proj_revision_row.visible = False
+        self._proj_draft_panel.add_component(self._proj_revision_row)
+
+        draft_btns = FlowPanel(spacing_above='small', spacing_below='small')
+        self._proj_decompose_btn = Button(text='Decompose', role='filled-button')
+        self._proj_decompose_btn.set_event_handler('click', self._proj_decompose_clicked)
+        self._proj_regen_btn = Button(text='Regenerate', role='tonal-button', visible=False)
+        self._proj_regen_btn.set_event_handler('click', self._proj_regen_clicked)
+        self._proj_start_btn = Button(text='Start', role='filled-button', enabled=False)
+        self._proj_start_btn.set_event_handler('click', self._proj_start_clicked)
+        draft_btns.add_component(self._proj_decompose_btn)
+        draft_btns.add_component(self._proj_regen_btn)
+        draft_btns.add_component(self._proj_start_btn)
+        self._proj_draft_panel.add_component(draft_btns)
+
+        self._proj_node_list_panel = ColumnPanel()
+        self._proj_draft_panel.add_component(self._proj_node_list_panel)
+
+        # ── Running state ────────────────────────────────────────────────────
+        self._proj_running_panel = ColumnPanel(visible=False)
+        self._projects_panel.add_component(self._proj_running_panel)
+
+        self._proj_run_name_lbl = Label(text='', role='title', font_size=18, bold=True)
+        self._proj_running_panel.add_component(self._proj_run_name_lbl)
+        self._proj_run_node_panel = ColumnPanel()
+        self._proj_running_panel.add_component(self._proj_run_node_panel)
+        self._proj_run_session_lbl = Label(text='', role='body', font_size=14)
+        self._proj_running_panel.add_component(self._proj_run_session_lbl)
+
+        run_btns = FlowPanel(spacing_above='small', spacing_below='small')
+        self._proj_stop_btn = Button(text='Stop after current session', role='tonal-button')
+        self._proj_stop_btn.set_event_handler('click', self._proj_stop_clicked)
+        run_btns.add_component(self._proj_stop_btn)
+        self._proj_running_panel.add_component(run_btns)
+
+        # ── Stopped state ────────────────────────────────────────────────────
+        self._proj_stopped_panel = ColumnPanel(visible=False)
+        self._projects_panel.add_component(self._proj_stopped_panel)
+
+        self._proj_stop_name_lbl = Label(text='', role='title', font_size=18, bold=True)
+        self._proj_stopped_panel.add_component(self._proj_stop_name_lbl)
+        self._proj_stop_node_panel = ColumnPanel()
+        self._proj_stopped_panel.add_component(self._proj_stop_node_panel)
+
+        stop_btns = FlowPanel(spacing_above='small', spacing_below='small')
+        self._proj_resume_btn = Button(text='Resume', role='filled-button')
+        self._proj_resume_btn.set_event_handler('click', self._proj_resume_clicked)
+        self._proj_abandon_btn = Button(text='Abandon', role='outlined-button')
+        self._proj_abandon_btn.set_event_handler('click', self._proj_abandon_clicked)
+        stop_btns.add_component(self._proj_resume_btn)
+        stop_btns.add_component(self._proj_abandon_btn)
+        self._proj_stopped_panel.add_component(stop_btns)
+
+        # ── Poll timer (15s) ─────────────────────────────────────────────────
+        tmr = Timer(interval=15)
+        self._proj_poll_timer[0] = tmr
+
+        def _on_proj_tick(**kw):
+            pid = self._proj_current_id[0]
+            if pid and self._projects_panel.visible:
+                self._proj_refresh_progress(pid)
+
+        tmr.set_event_handler('tick', _on_proj_tick)
+        self._projects_panel.add_component(tmr)
+
+    _NODE_STATUS_BADGE = {
+        'pending': '● pending',
+        'running': '\U0001f535 running',
+        'done': '✅ done',
+        'failed': '❌ failed',
+    }
+
+    def _proj_render_node_list(self, panel, nodes, show_grader=False):
+        panel.clear()
+        for n in nodes:
+            card = ColumnPanel(role='outlined-card')
+            hdr = FlowPanel(spacing_above='small', spacing_below='none')
+            badge_text = self._NODE_STATUS_BADGE.get(n.get('status', 'pending'), n.get('status', ''))
+            hdr.add_component(Label(text=f'{badge_text}  ', role='body', font_size=13))
+            type_lbl = Label(text=f'[{n.get("type", "")}]', role='body', font_size=13)
+            hdr.add_component(type_lbl)
+            hdr.add_component(Label(text=f'  {n.get("name", "")}', role='body', font_size=15, bold=True))
+            card.add_component(hdr)
+            # acceptance_criteria — collapsed to 2 lines
+            ac = n.get('acceptance_criteria') or ''
+            ac_lbl = Label(text=ac[:200] + ('…' if len(ac) > 200 else ''), role='body', font_size=13)
+            card.add_component(ac_lbl)
+            if show_grader and n.get('grader_rationale'):
+                card.add_component(Label(
+                    text=f'❌ Grader: {n["grader_rationale"][:300]}',
+                    role='body', font_size=13,
+                ))
+            panel.add_component(card)
+
+    def _proj_show_state(self, state):
+        self._proj_draft_panel.visible = (state == 'draft')
+        self._proj_running_panel.visible = (state == 'running')
+        self._proj_stopped_panel.visible = (state == 'stopped')
+
+    def _projects_load(self):
+        self._proj_fb.text = 'Loading…'
+        try:
+            with anvil.server.no_loading_indicator:
+                active = anvil.server.call('get_active_project')
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+            return
+        if active is None:
+            self._proj_fb.text = 'No active project — enter a goal to decompose.'
+            self._proj_show_state('draft')
+            self._proj_current_id[0] = None
+        else:
+            self._proj_current_id[0] = active['id']
+            self._proj_fb.text = ''
+            self._proj_refresh_progress(active['id'])
+
+    def _proj_refresh_progress(self, project_id):
+        try:
+            with anvil.server.no_loading_indicator:
+                data = anvil.server.call('get_project_progress', project_id)
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+            return
+        nodes = data.get('nodes', [])
+        session = data.get('session')
+        auto_cycle = data.get('auto_cycle_enabled', False)
+        proj = data.get('project', {})
+
+        if auto_cycle:
+            self._proj_run_name_lbl.text = proj.get('name', '')
+            self._proj_render_node_list(self._proj_run_node_panel, nodes)
+            phase = (session or {}).get('phase') or ''
+            action = (session or {}).get('current_action') or ''
+            self._proj_run_session_lbl.text = (
+                f'Session: {phase.upper()}{"  —  " + action if action else ""}'
+                if phase else 'Session: idle'
+            )
+            self._proj_show_state('running')
+        else:
+            self._proj_stop_name_lbl.text = proj.get('name', '')
+            self._proj_render_node_list(self._proj_stop_node_panel, nodes, show_grader=True)
+            self._proj_show_state('stopped')
+
+    def _proj_decompose_clicked(self, **event_args):
+        goal = (self._proj_goal_input.text or '').strip()
+        if not goal:
+            self._proj_fb.text = 'Enter a goal first.'
+            return
+        self._proj_fb.text = 'Decomposing…'
+        self._proj_decompose_btn.enabled = False
+        try:
+            result = anvil.server.call('decompose_goal', goal)
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+            self._proj_decompose_btn.enabled = True
+            return
+        self._proj_decompose_btn.enabled = True
+        project_id = result.get('project_id')
+        nodes = result.get('nodes', [])
+        self._proj_current_id[0] = project_id
+        self._proj_draft_nodes[0] = nodes
+        self._proj_render_node_list(self._proj_node_list_panel, nodes)
+        self._proj_start_btn.enabled = bool(project_id)
+        self._proj_regen_btn.visible = True
+        self._proj_revision_row.visible = True
+        self._proj_fb.text = f'{len(nodes)} nodes — review and click Start.'
+
+    def _proj_regen_clicked(self, **event_args):
+        goal = (self._proj_goal_input.text or '').strip()
+        revision = (self._proj_revision_input.text or '').strip()
+        prior_id = self._proj_current_id[0]
+        if not goal:
+            self._proj_fb.text = 'Enter a goal first.'
+            return
+        self._proj_fb.text = 'Regenerating…'
+        self._proj_regen_btn.enabled = False
+        try:
+            result = anvil.server.call('decompose_goal', goal, revision, prior_id)
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+            self._proj_regen_btn.enabled = True
+            return
+        self._proj_regen_btn.enabled = True
+        project_id = result.get('project_id')
+        nodes = result.get('nodes', [])
+        self._proj_current_id[0] = project_id
+        self._proj_draft_nodes[0] = nodes
+        self._proj_render_node_list(self._proj_node_list_panel, nodes)
+        self._proj_start_btn.enabled = bool(project_id)
+        self._proj_fb.text = f'{len(nodes)} nodes — review and click Start.'
+
+    def _proj_start_clicked(self, **event_args):
+        pid = self._proj_current_id[0]
+        if not pid:
+            self._proj_fb.text = 'No project to start.'
+            return
+        self._proj_fb.text = 'Starting…'
+        self._proj_start_btn.enabled = False
+        try:
+            anvil.server.call('start_project', pid)
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+            self._proj_start_btn.enabled = True
+            return
+        self._proj_fb.text = 'Project started — lean session triggered.'
+        self._proj_refresh_progress(pid)
+
+    def _proj_stop_clicked(self, **event_args):
+        self._proj_fb.text = 'Stopping after current session…'
+        try:
+            anvil.server.call('set_auto_cycle_only', False)
+            self._proj_fb.text = 'Will stop after current session.'
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+
+    def _proj_resume_clicked(self, **event_args):
+        pid = self._proj_current_id[0]
+        if not pid:
+            return
+        self._proj_fb.text = 'Resuming…'
+        try:
+            anvil.server.call('set_auto_cycle_only', True)
+            anvil.server.call('trigger_lean_session')
+            self._proj_fb.text = 'Resumed — lean session triggered.'
+            self._proj_refresh_progress(pid)
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+
+    def _proj_abandon_clicked(self, **event_args):
+        pid = self._proj_current_id[0]
+        if not pid:
+            return
+        self._proj_fb.text = 'Abandoning…'
+        try:
+            anvil.server.call('abandon_project', pid)
+            self._proj_current_id[0] = None
+            self._proj_show_state('draft')
+            self._proj_fb.text = 'Project abandoned.'
+        except Exception as e:
+            self._proj_fb.text = f'Error: {e}'
+
     def _build_fleet_inner(self, panel):
         fleet_hdr = FlowPanel(spacing_above='small', spacing_below='small')
         self._fleet_export_btn = Button(text='⬇ Export fleet', role='tonal-button')
@@ -582,11 +857,13 @@ class Form1(Form1Template):
         panels = {
             'home': self._home_panel,
             'workpad': self._workpad_panel,
+            'projects': self._projects_panel,
             'system': self._system_panel,
         }
         btns = {
             'home': self._home_tab_btn,
             'workpad': self._workpad_tab_btn,
+            'projects': self._projects_tab_btn,
             'system': self._system_tab_btn,
         }
         for name, panel in panels.items():
@@ -602,6 +879,10 @@ class Form1(Form1Template):
         if not getattr(self, '_workpad_loaded', False):
             self._workpad_loaded = True
             self._wp_load_state()
+
+    def _show_projects_tab(self, **event_args):
+        self._set_tab('projects')
+        self._projects_load()
 
     def _show_system_tab(self, **event_args):
         self._set_tab('system')
