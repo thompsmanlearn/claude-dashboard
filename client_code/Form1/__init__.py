@@ -557,9 +557,8 @@ class Form1(Form1Template):
         try:
             with anvil.server.no_loading_indicator:
                 data = anvil.server.call('get_project_progress', project_id)
-        except Exception as e:
-            self._proj_fb.text = f'Error: {e}'
-            return
+        except Exception:
+            return  # transient — poll retries in 15s
         nodes = data.get('nodes', [])
         session = data.get('session')
         auto_cycle = data.get('auto_cycle_enabled', False)
