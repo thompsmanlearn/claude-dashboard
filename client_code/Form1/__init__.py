@@ -90,6 +90,7 @@ class Form1(Form1Template):
         self._home_queue_pending = 0
         self._home_inbox_count = 0
         self._home_error_count = 0
+        self._home_recent_errors = []
         self._lean_poll_timer = None
         self._research_briefing_full = ''
         self._build_layout()
@@ -222,6 +223,34 @@ class Form1(Form1Template):
         strip.add_component(Label(text='  Errors: ', font_size=18))
         strip.add_component(self._home_error_lbl)
         self._home_panel.add_component(strip)
+
+        # Collapsible error panel — toggled by clicking the error indicator
+        self._home_error_panel = ColumnPanel()
+        self._home_error_panel.visible = False
+        self._home_panel.add_component(self._home_error_panel)
+
+        def _toggle_error_panel(**kw):
+            self._home_error_panel.visible = not self._home_error_panel.visible
+            if self._home_error_panel.visible:
+                self._home_error_panel.clear()
+                if not self._home_recent_errors:
+                    self._home_error_panel.add_component(
+                        Label(text='No recent unresolved errors.', role='body', font_size=16)
+                    )
+                else:
+                    for err in self._home_recent_errors:
+                        ts = (err.get('timestamp') or '')[:19].replace('T', ' ')
+                        wf = err.get('workflow_name') or '—'
+                        node = err.get('node_name') or '—'
+                        msg = (err.get('error_message') or '—')[:300]
+                        self._home_error_panel.add_component(
+                            Label(text=f'{ts}  {wf} / {node}', bold=True, role='body', font_size=14)
+                        )
+                        self._home_error_panel.add_component(
+                            Label(text=msg, role='body', font_size=13)
+                        )
+
+        self._home_error_lbl.set_event_handler('click', _toggle_error_panel)
 
         # 2. Bill input panel
         self._home_panel.add_component(Label(text='Session Input', bold=True, role='body', font_size=16))
@@ -1174,8 +1203,10 @@ class Form1(Form1Template):
             with anvil.server.no_loading_indicator:
                 data = anvil.server.call('get_error_log_status')
             self._home_error_count = data.get('unresolved_count', 0)
+            self._home_recent_errors = data.get('recent', [])
         except Exception:
             self._home_error_count = 0
+            self._home_recent_errors = []
         self._update_home_status_strip()
 
     def _render_inbox_item(self, item):
