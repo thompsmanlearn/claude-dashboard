@@ -89,6 +89,7 @@ class Form1(Form1Template):
         self._home_active_agents = 0
         self._home_queue_pending = 0
         self._home_inbox_count = 0
+        self._home_error_count = 0
         self._lean_poll_timer = None
         self._research_briefing_full = ''
         self._build_layout()
@@ -210,6 +211,7 @@ class Form1(Form1Template):
         self._home_agents_lbl = Label(text='—', font_size=24)
         self._home_queue_lbl = Label(text='—', font_size=24)
         self._home_inbox_badge = Label(text='—', font_size=24, bold=True)
+        self._home_error_lbl = Label(text='—', font_size=24, bold=True)
         strip.add_component(self._home_health_lbl)
         strip.add_component(Label(text='  Agents: ', font_size=18))
         strip.add_component(self._home_agents_lbl)
@@ -217,6 +219,8 @@ class Form1(Form1Template):
         strip.add_component(self._home_queue_lbl)
         strip.add_component(Label(text='  Inbox: ', font_size=18))
         strip.add_component(self._home_inbox_badge)
+        strip.add_component(Label(text='  Errors: ', font_size=18))
+        strip.add_component(self._home_error_lbl)
         self._home_panel.add_component(strip)
 
         # 2. Bill input panel
@@ -894,6 +898,7 @@ class Form1(Form1Template):
         self._load_agents()
         self._load_queue()
         self._load_inbox()
+        self._load_error_status()
         self._refresh_lean_status()
         self._refresh_auto_status()
         self._update_home_status_strip()
@@ -1163,6 +1168,15 @@ class Form1(Form1Template):
                 self._render_inbox_item(item)
         except Exception as e:
             self._home_inbox_body.add_component(Label(text=f'Unavailable: {e}', role='body', font_size=18))
+
+    def _load_error_status(self):
+        try:
+            with anvil.server.no_loading_indicator:
+                data = anvil.server.call('get_error_log_status')
+            self._home_error_count = data.get('unresolved_count', 0)
+        except Exception:
+            self._home_error_count = 0
+        self._update_home_status_strip()
 
     def _render_inbox_item(self, item):
         item_id = item['id']
@@ -2766,10 +2780,12 @@ class Form1(Form1Template):
         n_agents = self._home_active_agents
         n_queue = self._home_queue_pending
         n_inbox = self._home_inbox_count
+        n_errors = self._home_error_count
         self._home_health_lbl.text = '🟢' if n_inbox == 0 else '🟡'
         self._home_agents_lbl.text = str(n_agents)
         self._home_queue_lbl.text = str(n_queue)
         self._home_inbox_badge.text = f'⚠️ {n_inbox}' if n_inbox > 0 else '0'
+        self._home_error_lbl.text = f'🔴 {n_errors}' if n_errors > 0 else '✅'
 
     # ── Workpad tab ───────────────────────────────────────────────────────────
 
