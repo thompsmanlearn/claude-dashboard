@@ -541,9 +541,9 @@ class Form1(Form1Template):
         try:
             with anvil.server.no_loading_indicator:
                 active = anvil.server.call('get_active_project')
-        except Exception as e:
-            self._proj_fb.text = f'Error: {e}'
-            return
+        except Exception:
+            self._proj_fb.text = ''
+            return  # transient — timer retries in 15s
         if active is None:
             self._proj_fb.text = 'No active project — enter a goal to decompose.'
             self._proj_show_state('draft')
