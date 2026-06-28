@@ -212,7 +212,7 @@ class Form1(Form1Template):
         self._home_agents_lbl = Label(text='—', font_size=24)
         self._home_queue_lbl = Label(text='—', font_size=24)
         self._home_inbox_badge = Label(text='—', font_size=24, bold=True)
-        self._home_error_lbl = Label(text='—', font_size=24, bold=True)
+        self._home_error_lbl = Link(text='—', font_size=24, bold=True)
         strip.add_component(self._home_health_lbl)
         strip.add_component(Label(text='  Agents: ', font_size=18))
         strip.add_component(self._home_agents_lbl)
